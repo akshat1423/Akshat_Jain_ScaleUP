@@ -37,6 +37,7 @@ class SupabaseApi {
         biography: null,
         interests: [],
         club_memberships: [],
+        personal_preferences: [], // New field for personal preferences/tags
         profile_picture_url: null,
         phone_number: null,
         linkedin_url: null,
@@ -50,6 +51,7 @@ class SupabaseApi {
           biography: 'public',
           interests: 'public',
           club_memberships: 'public',
+          personal_preferences: 'public',
           major: 'public',
           graduation_year: 'public',
           enrolled_courses: 'public',
@@ -106,6 +108,7 @@ class SupabaseApi {
           biography: null,
           interests: [],
           club_memberships: [],
+          personal_preferences: [], // New field for personal preferences/tags
           profile_picture_url: null,
           phone_number: null,
           linkedin_url: null,
@@ -119,6 +122,7 @@ class SupabaseApi {
             biography: 'public',
             interests: 'public',
             club_memberships: 'public',
+            personal_preferences: 'public',
             major: 'public',
             graduation_year: 'public',
             enrolled_courses: 'public',
@@ -189,7 +193,7 @@ class SupabaseApi {
     const fields = [
       'name', 'email', 'biography', 'major', 'graduation_year', 
       'location', 'phone_number', 'linkedin_url', 'github_url',
-      'interests', 'club_memberships', 'enrolled_courses', 'profile_picture_url'
+      'interests', 'club_memberships', 'personal_preferences', 'enrolled_courses', 'profile_picture_url'
     ];
     
     const completedFields = fields.filter(field => {
@@ -829,21 +833,13 @@ class SupabaseApi {
 
     if (error) throw error;
 
-    // Get community name for notification
-    const { data: community } = await supabase
-      .from(TABLES.COMMUNITIES)
-      .select('name')
-      .eq('id', communityId)
-      .single();
-
-    if (community) {
-      await this.createNotification({
-        text: `New post in ${community.name}`,
-        type: 'new_post',
-        community_id: communityId,
-        post_id: data.id
-      });
-    }
+    // Notify all community members about the new post
+    await this.notifyCommunityMembers({
+      communityId,
+      text: 'New post',
+      type: 'new_post',
+      contentId: data.id
+    });
 
     return {
       id: data.id,
@@ -932,6 +928,79 @@ class SupabaseApi {
       .insert([notificationData]);
 
     if (error) throw error;
+  }
+
+  // Helper method to notify all community members of new content
+  async notifyCommunityMembers({ communityId, text, type, contentId = null }) {
+    try {
+      // Get all community members
+      const { data: members, error: membersError } = await supabase
+        .from(TABLES.COMMUNITY_MEMBERS)
+        .select('user_id')
+        .eq('community_id', communityId);
+
+      if (membersError) {
+        console.error('Error fetching community members:', membersError);
+        return;
+      }
+
+      if (!members || members.length === 0) {
+        console.log('No members found for community:', communityId);
+        return;
+      }
+
+      // Get community name for better notification text
+      const { data: community } = await supabase
+        .from(TABLES.COMMUNITIES)
+        .select('name')
+        .eq('id', communityId)
+        .single();
+
+      const communityName = community?.name || 'Community';
+
+      // Create notifications for all members
+      const notifications = members.map(member => {
+        const notification = {
+          text: `${text} in ${communityName}`,
+          type,
+          community_id: communityId,
+          created_at: new Date().toISOString()
+        };
+        
+        // Only set post_id for actual posts (type 'new_post')
+        if (type === 'new_post' && contentId) {
+          notification.post_id = contentId;
+        }
+        
+        return notification;
+      });
+
+      const { error: notificationError } = await supabase
+        .from(TABLES.NOTIFICATIONS)
+        .insert(notifications);
+
+      if (notificationError) {
+        console.error('Error creating notifications:', notificationError);
+        // Try to create notifications one by one if batch insert fails
+        console.log('Attempting to create notifications individually...');
+        for (const notification of notifications) {
+          try {
+            const { error: singleError } = await supabase
+              .from(TABLES.NOTIFICATIONS)
+              .insert([notification]);
+            if (singleError) {
+              console.error('Error creating individual notification:', singleError);
+            }
+          } catch (err) {
+            console.error('Exception creating individual notification:', err);
+          }
+        }
+      } else {
+        console.log(`Created ${notifications.length} notifications for community ${communityName}`);
+      }
+    } catch (error) {
+      console.error('Error in notifyCommunityMembers:', error);
+    }
   }
 
   // Helper method to check if user is member of community
@@ -1402,6 +1471,15 @@ class SupabaseApi {
       .single();
 
     if (error) throw error;
+
+    // Notify all community members about the new event
+    await this.notifyCommunityMembers({
+      communityId,
+      text: `New event: ${title}`,
+      type: 'new_event',
+      contentId: data.id
+    });
+
     return data;
   }
 
@@ -1476,6 +1554,15 @@ class SupabaseApi {
       .single();
 
     if (error) throw error;
+
+    // Notify all community members about the new poll
+    await this.notifyCommunityMembers({
+      communityId,
+      text: `New poll: ${question}`,
+      type: 'new_poll',
+      contentId: data.id
+    });
+
     return data;
   }
 
@@ -1591,6 +1678,15 @@ class SupabaseApi {
       .single();
 
     if (error) throw error;
+
+    // Notify all community members about the new announcement
+    await this.notifyCommunityMembers({
+      communityId,
+      text: `New announcement: ${title}`,
+      type: 'new_announcement',
+      contentId: data.id
+    });
+
     return data;
   }
 
@@ -1838,6 +1934,268 @@ class SupabaseApi {
       console.error('Error leaving sub-community:', error);
       throw error;
     }
+  }
+
+  // Auto-join communities based on user domain/profile information
+  async autoJoinCommunitiesByDomain(userId) {
+    try {
+      console.log('Starting auto-join process for user:', userId);
+      
+      // Get user profile information
+      const { data: user, error: userError } = await supabase
+        .from(TABLES.USERS)
+        .select('major, interests, club_memberships, personal_preferences, enrolled_courses, biography')
+        .eq('id', userId)
+        .single();
+
+      if (userError) {
+        console.error('Error fetching user profile:', userError);
+        throw userError;
+      }
+
+      if (!user) {
+        console.log('User not found');
+        return { joinedCommunities: [], skippedCommunities: [] };
+      }
+
+      // Extract domain keywords from user profile
+      const domainKeywords = this.extractDomainKeywords(user);
+      console.log('Extracted domain keywords:', domainKeywords);
+
+      if (domainKeywords.length === 0) {
+        console.log('No domain keywords found in user profile');
+        return { joinedCommunities: [], skippedCommunities: [] };
+      }
+
+      // Get all communities that the user is not already a member of
+      const { data: communities, error: communitiesError } = await supabase
+        .from(TABLES.COMMUNITIES)
+        .select(`
+          id,
+          name,
+          description,
+          tags,
+          privacy_setting,
+          community_members(user_id)
+        `)
+        .is('parent_id', null); // Only main communities
+
+      if (communitiesError) {
+        console.error('Error fetching communities:', communitiesError);
+        throw communitiesError;
+      }
+
+      // Get user's current community memberships
+      const { data: userMemberships, error: membershipsError } = await supabase
+        .from(TABLES.COMMUNITY_MEMBERS)
+        .select('community_id')
+        .eq('user_id', userId);
+
+      if (membershipsError) {
+        console.error('Error fetching user memberships:', membershipsError);
+        throw membershipsError;
+      }
+
+      const userCommunityIds = new Set(userMemberships?.map(m => m.community_id) || []);
+
+      // Filter communities user is not already a member of
+      const availableCommunities = communities.filter(community => 
+        !userCommunityIds.has(community.id)
+      );
+
+      console.log('Available communities for auto-join:', availableCommunities.length);
+
+      const joinedCommunities = [];
+      const skippedCommunities = [];
+
+      // Check each community for domain matches
+      for (const community of availableCommunities) {
+        try {
+          const matchScore = this.calculateDomainMatch(domainKeywords, community);
+          console.log(`Match score for ${community.name}: ${matchScore}`);
+
+          if (matchScore > 0) {
+            // Only auto-join public communities or if user has high match score
+            if (community.privacy_setting === 'public' || matchScore >= 0.7) {
+              try {
+                await this.joinCommunity({ userId, communityId: community.id });
+                joinedCommunities.push({
+                  id: community.id,
+                  name: community.name,
+                  matchScore,
+                  reason: this.getMatchReason(domainKeywords, community)
+                });
+                console.log(`Auto-joined community: ${community.name}`);
+              } catch (joinError) {
+                console.error(`Failed to join ${community.name}:`, joinError);
+                skippedCommunities.push({
+                  id: community.id,
+                  name: community.name,
+                  reason: 'Join failed',
+                  error: joinError.message
+                });
+              }
+            } else {
+              skippedCommunities.push({
+                id: community.id,
+                name: community.name,
+                reason: 'Private community with low match score',
+                matchScore
+              });
+            }
+          }
+        } catch (error) {
+          console.error(`Error processing community ${community.name}:`, error);
+          skippedCommunities.push({
+            id: community.id,
+            name: community.name,
+            reason: 'Processing error',
+            error: error.message
+          });
+        }
+      }
+
+      console.log(`Auto-join completed. Joined: ${joinedCommunities.length}, Skipped: ${skippedCommunities.length}`);
+
+      return {
+        joinedCommunities,
+        skippedCommunities,
+        domainKeywords
+      };
+    } catch (error) {
+      console.error('Error in autoJoinCommunitiesByDomain:', error);
+      throw error;
+    }
+  }
+
+  // Extract domain keywords from user profile
+  extractDomainKeywords(user) {
+    const keywords = new Set();
+    
+    // Add major if available
+    if (user.major) {
+      const majorWords = user.major.toLowerCase().split(/\s+/);
+      keywords.add(...majorWords);
+    }
+
+    // Add interests
+    if (user.interests && Array.isArray(user.interests)) {
+      user.interests.forEach(interest => {
+        const interestWords = interest.toLowerCase().split(/\s+/);
+        keywords.add(...interestWords);
+      });
+    }
+
+    // Add club memberships
+    if (user.club_memberships && Array.isArray(user.club_memberships)) {
+      user.club_memberships.forEach(club => {
+        const clubWords = club.toLowerCase().split(/\s+/);
+        keywords.add(...clubWords);
+      });
+    }
+
+    // Add personal preferences (highest priority for matching)
+    if (user.personal_preferences && Array.isArray(user.personal_preferences)) {
+      user.personal_preferences.forEach(preference => {
+        const prefWords = preference.toLowerCase().split(/\s+/);
+        keywords.add(...prefWords);
+      });
+    }
+
+    // Add enrolled courses
+    if (user.enrolled_courses && Array.isArray(user.enrolled_courses)) {
+      user.enrolled_courses.forEach(course => {
+        const courseWords = course.toLowerCase().split(/\s+/);
+        keywords.add(...courseWords);
+      });
+    }
+
+    // Add biography keywords (extract meaningful words)
+    if (user.biography) {
+      const bioWords = user.biography.toLowerCase()
+        .replace(/[^\w\s]/g, ' ') // Remove punctuation
+        .split(/\s+/)
+        .filter(word => word.length > 3); // Only words longer than 3 characters
+      keywords.add(...bioWords);
+    }
+
+    // Remove common stop words
+    const stopWords = new Set(['the', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by', 'from', 'up', 'about', 'into', 'through', 'during', 'before', 'after', 'above', 'below', 'between', 'among', 'is', 'are', 'was', 'were', 'be', 'been', 'being', 'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could', 'should', 'may', 'might', 'must', 'can', 'this', 'that', 'these', 'those', 'i', 'you', 'he', 'she', 'it', 'we', 'they', 'me', 'him', 'her', 'us', 'them', 'my', 'your', 'his', 'her', 'its', 'our', 'their', 'a', 'an']);
+    
+    return Array.from(keywords).filter(keyword => !stopWords.has(keyword));
+  }
+
+  // Calculate domain match score between user keywords and community
+  calculateDomainMatch(userKeywords, community) {
+    let matchScore = 0;
+    let totalMatches = 0;
+
+    // Check community name
+    const communityName = community.name.toLowerCase();
+    const nameMatches = userKeywords.filter(keyword => 
+      communityName.includes(keyword)
+    ).length;
+    matchScore += nameMatches * 0.3; // Name matches
+    totalMatches += nameMatches;
+
+    // Check community description
+    if (community.description) {
+      const description = community.description.toLowerCase();
+      const descMatches = userKeywords.filter(keyword => 
+        description.includes(keyword)
+      ).length;
+      matchScore += descMatches * 0.25;
+      totalMatches += descMatches;
+    }
+
+    // Check community tags (highest priority for personal preferences)
+    if (community.tags && Array.isArray(community.tags)) {
+      const tagMatches = userKeywords.filter(keyword => 
+        community.tags.some(tag => tag.toLowerCase().includes(keyword))
+      ).length;
+      matchScore += tagMatches * 0.45; // Tags get highest weight for personal preferences
+      totalMatches += tagMatches;
+    }
+
+    // Normalize score (0-1 range)
+    return totalMatches > 0 ? Math.min(matchScore / totalMatches, 1) : 0;
+  }
+
+  // Get human-readable reason for match
+  getMatchReason(userKeywords, community) {
+    const reasons = [];
+    
+    // Check name matches
+    const communityName = community.name.toLowerCase();
+    const nameMatches = userKeywords.filter(keyword => 
+      communityName.includes(keyword)
+    );
+    if (nameMatches.length > 0) {
+      reasons.push(`Name contains: ${nameMatches.join(', ')}`);
+    }
+
+    // Check description matches
+    if (community.description) {
+      const description = community.description.toLowerCase();
+      const descMatches = userKeywords.filter(keyword => 
+        description.includes(keyword)
+      );
+      if (descMatches.length > 0) {
+        reasons.push(`Description contains: ${descMatches.join(', ')}`);
+      }
+    }
+
+    // Check tag matches
+    if (community.tags && Array.isArray(community.tags)) {
+      const tagMatches = userKeywords.filter(keyword => 
+        community.tags.some(tag => tag.toLowerCase().includes(keyword))
+      );
+      if (tagMatches.length > 0) {
+        reasons.push(`Tags contain: ${tagMatches.join(', ')}`);
+      }
+    }
+
+    return reasons.join('; ');
   }
 
   async isSubCommunityMember({ subCommunityId, userId }) {

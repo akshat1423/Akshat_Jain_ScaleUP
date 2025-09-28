@@ -21,6 +21,7 @@ export default function CommunitiesScreen({ navigation }){
   const [isJoining, setIsJoining] = useState(null);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [showAdvancedForm, setShowAdvancedForm] = useState(false);
+  const [isAutoJoining, setIsAutoJoining] = useState(false);
 
   const create = async ()=>{
     if(!name.trim()) {
@@ -112,6 +113,46 @@ export default function CommunitiesScreen({ navigation }){
     });
   };
 
+  const handleAutoJoin = async () => {
+    Alert.alert(
+      'Auto-Join Communities',
+      'This will automatically join communities that match your profile information (major, interests, courses, etc.). Continue?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'Auto-Join', 
+          onPress: async () => {
+            try {
+              setIsAutoJoining(true);
+              const result = await storeApi.autoJoinCommunitiesByDomain(user.id);
+              
+              if (result.joinedCommunities.length > 0) {
+                Alert.alert(
+                  'Auto-Join Complete!',
+                  `Successfully joined ${result.joinedCommunities.length} communities:\n\n${result.joinedCommunities.map(c => `• ${c.name}`).join('\n')}`,
+                  [{ text: 'OK' }]
+                );
+                // Refresh communities data
+                await refresh();
+              } else {
+                Alert.alert(
+                  'No Matches Found',
+                  'No communities were found that match your profile. Try adding more details to your interests, major, or biography.',
+                  [{ text: 'OK' }]
+                );
+              }
+            } catch (error) {
+              console.error('Error in auto-join:', error);
+              Alert.alert('Auto-Join Error', 'Failed to auto-join communities. Please try again later.');
+            } finally {
+              setIsAutoJoining(false);
+            }
+          }
+        }
+      ]
+    );
+  };
+
   // Remove auto-join functionality since we're not showing parent/child relationships
 
   if (authLoading) {
@@ -175,14 +216,28 @@ export default function CommunitiesScreen({ navigation }){
         <Text style={styles.sub}>Create, join, and manage communities</Text>
       </View>
 
-      <TouchableOpacity 
-        style={styles.createButton} 
-        onPress={() => setShowCreateForm(!showCreateForm)}
-      >
-        <Text style={styles.createButtonText}>
-          {showCreateForm ? 'Cancel' : '+ Create New Community'}
-        </Text>
-      </TouchableOpacity>
+      <View style={styles.actionButtons}>
+        <TouchableOpacity 
+          style={styles.createButton} 
+          onPress={() => setShowCreateForm(!showCreateForm)}
+        >
+          <Text style={styles.createButtonText}>
+            {showCreateForm ? 'Cancel' : '+ Create New Community'}
+          </Text>
+        </TouchableOpacity>
+        
+        <TouchableOpacity 
+          style={[styles.autoJoinButton, isAutoJoining && styles.autoJoinButtonDisabled]} 
+          onPress={handleAutoJoin}
+          disabled={isAutoJoining}
+        >
+          {isAutoJoining ? (
+            <ActivityIndicator color="#fff" size="small" />
+          ) : (
+            <Text style={styles.autoJoinButtonText}>Auto-Join</Text>
+          )}
+        </TouchableOpacity>
+      </View>
 
       {showCreateForm && (
         <View style={styles.form}>
@@ -331,10 +386,15 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#4B6A75' 
   },
-  createButton: {
-    backgroundColor: '#08313B',
+  actionButtons: {
+    flexDirection: 'row',
     marginHorizontal: 16,
     marginBottom: 16,
+    gap: 12,
+  },
+  createButton: {
+    backgroundColor: '#08313B',
+    flex: 1,
     paddingVertical: 14,
     borderRadius: 12,
     alignItems: 'center',
@@ -345,6 +405,26 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   createButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  autoJoinButton: {
+    backgroundColor: '#00D1B2',
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  autoJoinButtonDisabled: {
+    backgroundColor: '#7aa0ac',
+  },
+  autoJoinButtonText: {
     color: '#fff',
     fontSize: 16,
     fontWeight: '700',

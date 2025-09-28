@@ -43,6 +43,7 @@ export default function ProfileEditScreen({ navigation }) {
     github_url: user?.github_url || '',
     interests: user?.interests || [],
     club_memberships: user?.club_memberships || [],
+    personal_preferences: user?.personal_preferences || [],
     enrolled_courses: user?.enrolled_courses || [],
   });
   
@@ -54,6 +55,7 @@ export default function ProfileEditScreen({ navigation }) {
   // Form state
   const [newInterest, setNewInterest] = useState('');
   const [newClub, setNewClub] = useState('');
+  const [newPreference, setNewPreference] = useState('');
   const [newCourse, setNewCourse] = useState('');
 
   useEffect(() => {
@@ -70,6 +72,7 @@ export default function ProfileEditScreen({ navigation }) {
         github_url: user.github_url || '',
         interests: user.interests || [],
         club_memberships: user.club_memberships || [],
+        personal_preferences: user.personal_preferences || [],
         enrolled_courses: user.enrolled_courses || [],
       });
       setPrivacySettings(mergeWithDefaultPrivacySettings(user.privacy_settings));
@@ -94,11 +97,62 @@ export default function ProfileEditScreen({ navigation }) {
       await api.updatePrivacySettings(privacySettings);
       
       setUser(updatedUser);
-      Alert.alert('Success', 'Profile updated successfully!');
-      navigation.goBack();
+      
+      // Show auto-join option after successful profile update
+      Alert.alert(
+        'Profile Updated!',
+        'Would you like to automatically join communities based on your profile information?',
+        [
+          {
+            text: 'Not Now',
+            style: 'cancel',
+            onPress: () => navigation.goBack()
+          },
+          {
+            text: 'Auto-Join',
+            onPress: () => handleAutoJoin(updatedUser.id)
+          }
+        ]
+      );
     } catch (error) {
       console.error('Error updating profile:', error);
       Alert.alert('Error', 'Failed to update profile. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleAutoJoin = async (userId) => {
+    try {
+      setLoading(true);
+      const result = await api.autoJoinCommunitiesByDomain(userId);
+      
+      if (result.joinedCommunities.length > 0) {
+        Alert.alert(
+          'Auto-Join Complete!',
+          `Successfully joined ${result.joinedCommunities.length} communities:\n\n${result.joinedCommunities.map(c => `• ${c.name}`).join('\n')}`,
+          [
+            {
+              text: 'OK',
+              onPress: () => navigation.goBack()
+            }
+          ]
+        );
+      } else {
+        Alert.alert(
+          'No Matches Found',
+          'No communities were found that match your profile. Try adding more details to your interests, major, or biography.',
+          [
+            {
+              text: 'OK',
+              onPress: () => navigation.goBack()
+            }
+          ]
+        );
+      }
+    } catch (error) {
+      console.error('Error in auto-join:', error);
+      Alert.alert('Auto-Join Error', 'Failed to auto-join communities. You can manually join communities from the Communities screen.');
     } finally {
       setLoading(false);
     }
@@ -317,6 +371,39 @@ export default function ProfileEditScreen({ navigation }) {
           </View>
         ))}
       </View>
+
+      <View style={styles.fieldGroup}>
+        <Text style={styles.fieldLabel}>Personal Preferences</Text>
+        <Text style={styles.fieldDescription}>
+          Add tags that describe your preferences, hobbies, or areas of interest. These will be used to match you with relevant communities.
+        </Text>
+        <View style={styles.arrayInputContainer}>
+          <TextInput
+            style={styles.arrayInput}
+            value={newPreference}
+            onChangeText={setNewPreference}
+            placeholder="e.g., photography, hiking, coding, music"
+            onSubmitEditing={() => addArrayItem('personal_preferences', newPreference, setNewPreference)}
+          />
+          <TouchableOpacity
+            style={styles.addButton}
+            onPress={() => addArrayItem('personal_preferences', newPreference, setNewPreference)}
+          >
+            <Text style={styles.addButtonText}>Add</Text>
+          </TouchableOpacity>
+        </View>
+        {profileData.personal_preferences.map((preference, index) => (
+          <View key={index} style={styles.arrayItem}>
+            <Text style={styles.arrayItemText}>{preference}</Text>
+            <TouchableOpacity
+              style={styles.removeButton}
+              onPress={() => removeArrayItem('personal_preferences', index)}
+            >
+              <Text style={styles.removeButtonText}>×</Text>
+            </TouchableOpacity>
+          </View>
+        ))}
+      </View>
     </View>
   );
 
@@ -527,6 +614,12 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#08313B',
     marginBottom: 8,
+  },
+  fieldDescription: {
+    fontSize: 12,
+    color: '#4B6A75',
+    marginBottom: 8,
+    lineHeight: 16,
   },
   textInput: {
     borderWidth: 1,

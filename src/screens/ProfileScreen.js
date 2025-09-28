@@ -96,6 +96,46 @@ export default function ProfileScreen({ navigation }){
     }
   };
 
+  const handleAutoJoin = async () => {
+    Alert.alert(
+      'Auto-Join Communities',
+      'This will automatically join communities that match your profile information (major, interests, courses, etc.). Continue?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'Auto-Join', 
+          onPress: async () => {
+            try {
+              setLoading(true);
+              const result = await api.autoJoinCommunitiesByDomain(user.id);
+              
+              if (result.joinedCommunities.length > 0) {
+                Alert.alert(
+                  'Auto-Join Complete!',
+                  `Successfully joined ${result.joinedCommunities.length} communities:\n\n${result.joinedCommunities.map(c => `• ${c.name}`).join('\n')}`,
+                  [{ text: 'OK' }]
+                );
+                // Refresh communities data
+                await refresh();
+              } else {
+                Alert.alert(
+                  'No Matches Found',
+                  'No communities were found that match your profile. Try adding more details to your interests, major, or biography.',
+                  [{ text: 'OK' }]
+                );
+              }
+            } catch (error) {
+              console.error('Error in auto-join:', error);
+              Alert.alert('Auto-Join Error', 'Failed to auto-join communities. Please try again later.');
+            } finally {
+              setLoading(false);
+            }
+          }
+        }
+      ]
+    );
+  };
+
   const handleOpenLink = (url) => {
     if (url) {
       Linking.openURL(url);
@@ -172,9 +212,14 @@ export default function ProfileScreen({ navigation }){
             </View>
           </View>
         </View>
-        <TouchableOpacity style={styles.editButton} onPress={handleEditProfile}>
-          <Text style={styles.editButtonText}>Edit</Text>
-        </TouchableOpacity>
+        <View style={styles.profileActions}>
+          <TouchableOpacity style={styles.editButton} onPress={handleEditProfile}>
+            <Text style={styles.editButtonText}>Edit</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.autoJoinButton} onPress={handleAutoJoin}>
+            <Text style={styles.autoJoinButtonText}>Auto-Join</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Basic Info Card */}
@@ -198,11 +243,12 @@ export default function ProfileScreen({ navigation }){
       )}
 
       {/* Personal Information */}
-      {(user.interests?.length > 0 || user.club_memberships?.length > 0) && (
+      {(user.interests?.length > 0 || user.club_memberships?.length > 0 || user.personal_preferences?.length > 0) && (
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Personal Information</Text>
           {renderProfileField(PROFILE_FIELDS.INTERESTS, user.interests, getFieldDisplayName(PROFILE_FIELDS.INTERESTS))}
           {renderProfileField(PROFILE_FIELDS.CLUB_MEMBERSHIPS, user.club_memberships, getFieldDisplayName(PROFILE_FIELDS.CLUB_MEMBERSHIPS))}
+          {renderProfileField(PROFILE_FIELDS.PERSONAL_PREFERENCES, user.personal_preferences, getFieldDisplayName(PROFILE_FIELDS.PERSONAL_PREFERENCES))}
         </View>
       )}
 
@@ -341,6 +387,10 @@ const styles = StyleSheet.create({
     height: '100%',
     backgroundColor: '#4CAF50',
   },
+  profileActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
   editButton: {
     backgroundColor: '#007AFF',
     paddingVertical: 8,
@@ -348,6 +398,17 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   editButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  autoJoinButton: {
+    backgroundColor: '#00D1B2',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+  },
+  autoJoinButtonText: {
     color: '#fff',
     fontSize: 14,
     fontWeight: '600',

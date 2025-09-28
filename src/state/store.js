@@ -61,6 +61,22 @@ export function StoreProvider({ children }){
     }
   };
 
+  const refreshNotifications = async () => {
+    if (!user) {
+      console.log('No user, skipping notification refresh');
+      return;
+    }
+    
+    try {
+      console.log('Refreshing notifications...');
+      const notifs = await api.listNotifications();
+      console.log('Notifications refreshed:', notifs);
+      setNotifications(notifs || []);
+    } catch (error) {
+      console.error('Error refreshing notifications:', error);
+    }
+  };
+
   const loadUser = async () => {
     try {
       console.log('Loading user...');
@@ -106,6 +122,7 @@ export function StoreProvider({ children }){
     loading, 
     authLoading,
     refresh, 
+    refreshNotifications,
     api 
   };
   
