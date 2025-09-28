@@ -184,6 +184,7 @@ export default function ProfileScreen(){
           <Text style={styles.saveBtnText}>Save</Text>
         </TouchableOpacity>
       </View>
+
     </View>
   );
 
@@ -266,6 +267,7 @@ const styles = StyleSheet.create({
   editBtnText:{ color:'#fff', fontSize:12, fontWeight:'600' },
   
   // Profile details
+  email:{ fontSize:14, color:'#4B6A75', marginTop:2 },
   kpi:{ color:'#4B6A75', marginTop:4 },
   detail:{ color:'#4B6A75', marginTop:6, fontSize:14 },
   bio:{ color:'#08313B', marginTop:8, fontStyle:'italic', fontSize:14, lineHeight:20 },
@@ -300,5 +302,18 @@ const styles = StyleSheet.create({
   post:{ backgroundColor:'#fff', borderRadius:14, padding:12, borderWidth:1, borderColor:'#E2EDF1', marginBottom:10 },
   pTitle:{ color:'#08313B', fontWeight:'700' },
   pMeta:{ color:'#5B7A86', fontSize:12, marginTop:4 },
-  empty:{ color:'#5B7A86', marginTop:20, textAlign:'center' }
+  empty:{ color:'#5B7A86', marginTop:20, textAlign:'center' },
+  signOutButton: {
+    backgroundColor: '#FF6B6B',
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 12,
+    alignItems: 'center',
+    marginTop: 20,
+  },
+  signOutText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
+  },
 });

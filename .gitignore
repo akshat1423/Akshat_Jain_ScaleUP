@@ -1,3 +1,11 @@
 .expo/
 
 node_modules/
+
+.env
+
+.env.example
+
+# Supabase configuration with sensitive API keys
+src/config/supabase.js
+
