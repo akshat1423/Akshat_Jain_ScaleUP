@@ -1,0 +1,1 @@
+export function computeImpact({ up = 0, down = 0 }) { return Math.max(0, (up*1) + (down*-1)); }
