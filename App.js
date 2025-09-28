@@ -5,6 +5,7 @@ import React from 'react';
 import { View, ActivityIndicator, Text, StyleSheet, AppRegistry } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { createStackNavigator } from '@react-navigation/stack';
 import { StoreProvider, useStore } from './src/state/store';
 import { StatusBar } from 'expo-status-bar';
 import CommunitiesScreen from './src/screens/CommunitiesScreen';
@@ -14,6 +15,43 @@ import ProfileScreen from './src/screens/ProfileScreen';
 import AuthScreen from './src/screens/AuthScreen';
 
 const Tab = createBottomTabNavigator();
+const Stack = createStackNavigator();
+
+// Create stack navigator for Communities
+function CommunitiesStack() {
+  return (
+    <Stack.Navigator
+      screenOptions={{
+        headerStyle: { 
+          backgroundColor: '#08313B',
+          elevation: 0,
+          shadowOpacity: 0,
+        },
+        headerTintColor: '#fff',
+        headerTitleStyle: {
+          fontWeight: '700',
+          fontSize: 18,
+        },
+        headerBackTitle: 'Back',
+      }}
+    >
+      <Stack.Screen 
+        name="CommunitiesList" 
+        component={CommunitiesScreen}
+        options={{
+          title: 'Communities',
+        }}
+      />
+      <Stack.Screen 
+        name="CommunityDetail" 
+        component={CommunityDetailScreen}
+        options={({ route }) => ({
+          title: route.params?.communityName || 'Community',
+        })}
+      />
+    </Stack.Navigator>
+  );
+}
 
 function MainApp() {
   const { user, authLoading } = useStore();
@@ -73,8 +111,9 @@ function MainApp() {
       >
         <Tab.Screen 
           name="Communities" 
-          component={CommunitiesScreen}
+          component={CommunitiesStack}
           options={{
+            headerShown: false,
             tabBarIcon: ({ color, size }) => (
               <Text style={{ fontSize: size, color }}>🏘️</Text>
             ),

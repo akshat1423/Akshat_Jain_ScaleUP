@@ -89,26 +89,11 @@ export default function CommunitiesScreen({ navigation }){
   };
 
   const openCommunity = (c) => {
-    // For now, we'll use a simple alert. In a real app, you'd navigate to the detail screen
-    Alert.alert(
-      'Community Details',
-      `Would you like to view details for ${c.name}?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { 
-          text: 'View Details', 
-          onPress: () => {
-            // TODO: Navigate to CommunityDetailScreen
-            // For now, just show community info
-            Alert.alert(
-              'Community Info',
-              `Name: ${c.name}\nDescription: ${c.description || 'No description'}\nMembers: ${c.memberCount || c.members?.length || 0}\nPrivacy: ${c.privacySetting || 'public'}`,
-              [{ text: 'OK' }]
-            );
-          }
-        }
-      ]
-    );
+    // Navigate to CommunityDetailScreen
+    navigation.navigate('CommunityDetail', { 
+      communityId: c.id, 
+      communityName: c.name 
+    });
   };
 
   // Remove auto-join functionality since we're not showing parent/child relationships
@@ -272,27 +257,9 @@ export default function CommunitiesScreen({ navigation }){
                 item={item} 
                 onPress={()=>openCommunity(item)}
                 onJoinRequest={()=>handleJoinRequest(item)}
+                onJoin={()=>join(item)}
                 isMember={item.members.includes(user.id)}
               />
-              <View style={styles.actionRow}>
-                <TouchableOpacity 
-                  style={[
-                    styles.actionBtn, 
-                    item.members.includes(user.id) && styles.actionBtnJoined
-                  ]} 
-                  onPress={()=>join(item)}
-                  disabled={isJoining === item.id}
-                >
-                  {isJoining === item.id ? (
-                    <ActivityIndicator size="small" color="#fff" />
-                  ) : (
-                    <Text style={styles.actionBtnText}>
-                      {item.members.includes(user.id) ? 'Joined' : 
-                       item.privacySetting === 'private' ? 'Request to Join' : 'Join'}
-                    </Text>
-                  )}
-                </TouchableOpacity>
-              </View>
             </View>
           ))
         )}

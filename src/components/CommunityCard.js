@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
 
-export default function CommunityCard({ item, onPress, isMember = false, onJoinRequest = null }){
+export default function CommunityCard({ item, onPress, isMember = false, onJoinRequest = null, onJoin = null }){
   const getCommunityType = () => {
     return 'Community';
   };
@@ -42,18 +42,29 @@ export default function CommunityCard({ item, onPress, isMember = false, onJoinR
     }
   };
 
+  const handleCardPress = () => {
+    if (isMember) {
+      // If member, navigate to community detail
+      onPress();
+    }
+  };
+
   const handleJoinPress = () => {
     if (item.privacySetting === 'private' && !isMember) {
       if (onJoinRequest) {
         onJoinRequest(item);
       }
-    } else {
-      onPress();
+    } else if (!isMember && onJoin) {
+      onJoin();
     }
   };
 
   return (
-    <TouchableOpacity style={[styles.card, isMember && styles.cardJoined]} onPress={handleJoinPress}>
+    <TouchableOpacity 
+      style={[styles.card, isMember && styles.cardJoined]} 
+      onPress={handleCardPress}
+      disabled={!isMember}
+    >
       <View style={styles.header}>
         <View style={styles.titleContainer}>
           {item.logoUrl && (
@@ -111,6 +122,14 @@ export default function CommunityCard({ item, onPress, isMember = false, onJoinR
             <Text style={styles.moreTagsText}>+{item.tags.length - 3} more</Text>
           )}
         </View>
+      )}
+
+      {!isMember && (
+        <TouchableOpacity style={styles.joinButton} onPress={handleJoinPress}>
+          <Text style={styles.joinButtonText}>
+            {item.privacySetting === 'private' ? '🔒 Request to Join' : '✨ Join Community'}
+          </Text>
+        </TouchableOpacity>
       )}
     </TouchableOpacity>
   );
@@ -279,5 +298,18 @@ const styles = StyleSheet.create({
     color: '#7aa0ac',
     fontStyle: 'italic',
     alignSelf: 'center',
+  },
+  joinButton: {
+    backgroundColor: '#08313B',
+    marginTop: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+  joinButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
   },
 });
