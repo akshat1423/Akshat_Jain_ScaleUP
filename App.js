@@ -1,5 +1,5 @@
 import React from 'react';
-import { Text, View } from 'react-native';
+import { Text, View, AppRegistry } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { StoreProvider } from './src/state/store';
@@ -15,7 +15,7 @@ function DummyScreen({ name }) {
   );
 }
 
-export default function App() {
+function App() {
   return (
     <StoreProvider>
       <NavigationContainer>
@@ -36,3 +36,8 @@ export default function App() {
     </StoreProvider>
   );
 }
+
+// Register the main component
+AppRegistry.registerComponent('main', () => App);
+
+export default App;
