@@ -933,6 +933,17 @@ class SupabaseApi {
   // Helper method to notify all community members of new content
   async notifyCommunityMembers({ communityId, text, type, contentId = null }) {
     try {
+      // Check if notifications table exists by trying to query it first
+      const { error: tableCheckError } = await supabase
+        .from(TABLES.NOTIFICATIONS)
+        .select('id')
+        .limit(1);
+
+      if (tableCheckError) {
+        console.log('Notifications table does not exist or is not accessible:', tableCheckError.message);
+        return;
+      }
+
       // Get all community members
       const { data: members, error: membersError } = await supabase
         .from(TABLES.COMMUNITY_MEMBERS)
@@ -975,14 +986,16 @@ class SupabaseApi {
         return notification;
       });
 
+      // Try batch insert first
       const { error: notificationError } = await supabase
         .from(TABLES.NOTIFICATIONS)
         .insert(notifications);
 
       if (notificationError) {
-        console.error('Error creating notifications:', notificationError);
+        console.error('Error creating notifications batch:', notificationError);
         // Try to create notifications one by one if batch insert fails
         console.log('Attempting to create notifications individually...');
+        let successCount = 0;
         for (const notification of notifications) {
           try {
             const { error: singleError } = await supabase
@@ -990,11 +1003,14 @@ class SupabaseApi {
               .insert([notification]);
             if (singleError) {
               console.error('Error creating individual notification:', singleError);
+            } else {
+              successCount++;
             }
           } catch (err) {
             console.error('Exception creating individual notification:', err);
           }
         }
+        console.log(`Successfully created ${successCount} out of ${notifications.length} notifications`);
       } else {
         console.log(`Created ${notifications.length} notifications for community ${communityName}`);
       }
@@ -2215,6 +2231,103 @@ class SupabaseApi {
     }
   }
 
+  // Community Posts
+  async createCommunityPost({ communityId, title, content, imageUrl = null, isPinned = false }) {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error('User not authenticated');
+
+    const { data, error } = await supabase
+      .from('community_posts')
+      .insert([{
+        community_id: communityId,
+        author_id: user.id,
+        title,
+        content,
+        image_url: imageUrl,
+        is_pinned: isPinned
+      }])
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    // Notify all community members about the new post (don't fail if notifications fail)
+    try {
+      await this.notifyCommunityMembers({
+        communityId,
+        text: `New post: ${title}`,
+        type: 'new_post',
+        contentId: data.id
+      });
+    } catch (notifError) {
+      console.log('Failed to create notifications (this is okay):', notifError.message);
+    }
+
+    return data;
+  }
+
+  async getCommunityPosts(communityId) {
+    const { data, error } = await supabase.rpc('get_community_posts_with_details', {
+      community_uuid: communityId
+    });
+
+    if (error) throw error;
+    return data;
+  }
+
+  async likePost(postId) {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error('User not authenticated');
+
+    const { data, error } = await supabase
+      .from('community_post_likes')
+      .insert([{
+        post_id: postId,
+        user_id: user.id
+      }])
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  }
+
+  async unlikePost(postId) {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error('User not authenticated');
+
+    const { error } = await supabase
+      .from('community_post_likes')
+      .delete()
+      .eq('post_id', postId)
+      .eq('user_id', user.id);
+
+    if (error) throw error;
+  }
+
+  async getPostLikes(postId) {
+    const { data, error } = await supabase
+      .from('community_post_likes')
+      .select(`
+        *,
+        users (name, email)
+      `)
+      .eq('post_id', postId)
+      .order('created_at', { ascending: true });
+
+    if (error) throw error;
+    return data;
+  }
+
+  async getCommunityPostCount(communityId) {
+    const { data, error } = await supabase.rpc('get_community_post_count', {
+      community_uuid: communityId
+    });
+
+    if (error) throw error;
+    return data;
+  }
+
   // Community Details
   async getCommunityDetails(communityId) {
     console.log('Getting community details for:', communityId);
@@ -2238,6 +2351,14 @@ class SupabaseApi {
 
     console.log('Processed members for community details:', members);
 
+    // Get actual post count
+    let postCount = 0;
+    try {
+      postCount = await this.getCommunityPostCount(communityId);
+    } catch (postError) {
+      console.log('Error getting post count:', postError);
+    }
+
     return {
       id: data.id,
       name: data.name,
@@ -2252,7 +2373,7 @@ class SupabaseApi {
       tags: data.tags || [],
       isActive: data.is_active !== false,
       members: members,
-      posts: data.posts || [],
+      posts: Array(postCount).fill({}), // Create array with post count
       created_at: data.created_at
     };
   }

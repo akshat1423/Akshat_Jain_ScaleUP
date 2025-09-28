@@ -1,5 +1,6 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useCallback, useRef } from 'react';
 import { View, Text, StyleSheet, FlatList, TextInput, TouchableOpacity, Alert, ActivityIndicator, ScrollView, Modal, RefreshControl } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { useStore } from '../state/store';
 import CommunityCard from '../components/CommunityCard';
 import { ShimmerCommunityCard, ShimmerList } from '../components/ShimmerEffect';
@@ -11,6 +12,32 @@ export default function CommunitiesScreen({ navigation }){
   // Show all communities as a flat list, no parent/child distinction
   
   console.log('CommunitiesScreen - loading:', loading, 'authLoading:', authLoading, 'user:', user, 'communities:', communities);
+
+  // Track if we've already refreshed on this focus to prevent infinite loops
+  const hasRefreshedRef = useRef(false);
+
+  // Auto-refresh when screen comes into focus (including when app opens)
+  useFocusEffect(
+    useCallback(() => {
+      console.log('CommunitiesScreen focused - checking if refresh needed');
+      
+      // Only refresh if we have a user, auth is complete, and we haven't already refreshed
+      if (user && !authLoading && !hasRefreshedRef.current) {
+        console.log('CommunitiesScreen focused - triggering refresh');
+        hasRefreshedRef.current = true;
+        
+        // Add a small delay to prevent immediate re-triggering
+        setTimeout(() => {
+          refresh();
+        }, 100);
+      }
+      
+      // Reset the flag when the screen loses focus
+      return () => {
+        hasRefreshedRef.current = false;
+      };
+    }, [user, authLoading]) // Removed refresh from dependencies to prevent infinite loop
+  );
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [privacySetting, setPrivacySetting] = useState('public');

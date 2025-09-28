@@ -50,6 +50,11 @@ export default function CommunityDetailScreen({ route, navigation }) {
   // Events state
   const [events, setEvents] = useState([]);
   const [showCreateEvent, setShowCreateEvent] = useState(false);
+
+  // Posts state
+  const [posts, setPosts] = useState([]);
+  const [showCreatePost, setShowCreatePost] = useState(false);
+  const [postLikes, setPostLikes] = useState({});
   const [eventForm, setEventForm] = useState({
     title: '',
     description: '',
@@ -84,6 +89,14 @@ export default function CommunityDetailScreen({ route, navigation }) {
   const [selectedMember, setSelectedMember] = useState(null);
   const [roleManagementForm, setRoleManagementForm] = useState({
     newRole: 'member'
+  });
+
+  // Post form state
+  const [postForm, setPostForm] = useState({
+    title: '',
+    content: '',
+    imageUrl: '',
+    isPinned: false
   });
 
   // Sub-communities state
@@ -160,6 +173,7 @@ export default function CommunityDetailScreen({ route, navigation }) {
           loadPolls(),
           loadMembers(),
           loadAnnouncements(),
+          loadPosts(),
           loadSubCommunities(),
         ]);
       }
@@ -323,6 +337,25 @@ export default function CommunityDetailScreen({ route, navigation }) {
       setAnnouncements(announcementsData);
     } catch (error) {
       console.error('Error loading announcements:', error);
+    }
+  };
+
+  const loadPosts = async () => {
+    try {
+      const data = await api.getCommunityPosts(communityId);
+      setPosts(data);
+      
+      // Load likes for each post
+      const likesPromises = data.map(post => api.getPostLikes(post.id));
+      const likesData = await Promise.all(likesPromises);
+      
+      const likesMap = {};
+      data.forEach((post, index) => {
+        likesMap[post.id] = likesData[index] || [];
+      });
+      setPostLikes(likesMap);
+    } catch (error) {
+      console.error('Error loading posts:', error);
     }
   };
 
@@ -832,6 +865,66 @@ export default function CommunityDetailScreen({ route, navigation }) {
     }
   };
 
+  const createPost = async () => {
+    if (!postForm.title.trim() || !postForm.content.trim()) {
+      Alert.alert('Error', 'Please provide both title and content');
+      return;
+    }
+
+    try {
+      await api.createCommunityPost({
+        communityId: community.id,
+        title: postForm.title.trim(),
+        content: postForm.content.trim(),
+        imageUrl: postForm.imageUrl || null,
+        isPinned: postForm.isPinned || false
+      });
+      setShowCreatePost(false);
+      setPostForm({
+        title: '',
+        content: '',
+        imageUrl: '',
+        isPinned: false
+      });
+      await loadPosts();
+      Alert.alert('Success', 'Post created successfully!');
+    } catch (error) {
+      console.error('Error creating post:', error);
+      Alert.alert('Error', `Failed to create post: ${error.message}`);
+    }
+  };
+
+  const handlePostLike = async (postId) => {
+    try {
+      const isLiked = postLikes[postId]?.some(like => like.user_id === user.id);
+
+      if (isLiked) {
+        // Unlike
+        await api.unlikePost(postId);
+        setPostLikes(prev => ({
+          ...prev,
+          [postId]: prev[postId]?.filter(like => like.user_id !== user.id) || []
+        }));
+      } else {
+        // Like
+        await api.likePost(postId);
+        const newLike = {
+          id: Date.now().toString(),
+          post_id: postId,
+          user_id: user.id,
+          created_at: new Date().toISOString(),
+          users: { name: user.name || 'You', email: user.email }
+        };
+        setPostLikes(prev => ({
+          ...prev,
+          [postId]: [...(prev[postId] || []), newLike]
+        }));
+      }
+    } catch (error) {
+      Alert.alert('Error', 'Failed to update like');
+    }
+  };
+
   const handleCreateContent = (contentType) => {
     setSelectedContentType(contentType);
     setShowCreateContent(false);
@@ -845,6 +938,9 @@ export default function CommunityDetailScreen({ route, navigation }) {
         break;
       case 'announcement':
         setShowCreateAnnouncement(true);
+        break;
+      case 'post':
+        setShowCreatePost(true);
         break;
       case 'subcommunity':
         setShowCreateSubCommunity(true);
@@ -880,7 +976,7 @@ export default function CommunityDetailScreen({ route, navigation }) {
           <Text style={styles.statLabel}>Members</Text>
         </View>
         <View style={styles.statItem}>
-          <Text style={styles.statNumber}>{community.posts?.length || 0}</Text>
+          <Text style={styles.statNumber}>{posts.length}</Text>
           <Text style={styles.statLabel}>Posts</Text>
         </View>
         <View style={styles.statItem}>
@@ -954,6 +1050,76 @@ export default function CommunityDetailScreen({ route, navigation }) {
         <View style={styles.rulesSection}>
           <Text style={styles.sectionTitle}>Community Rules</Text>
           <Text style={styles.rulesText}>{community.rules}</Text>
+        </View>
+      )}
+
+      {/* Posts Section */}
+      {isMember && posts.length > 0 && (
+        <View style={styles.postsSection}>
+          <View style={styles.postsHeader}>
+            <Text style={styles.sectionTitle}>Recent Posts</Text>
+            {(userRole === 'admin' || userRole === 'moderator') && (
+              <TouchableOpacity
+                style={styles.createButton}
+                onPress={() => setShowCreatePost(true)}
+              >
+                <Text style={styles.createButtonText}>+ Create Post</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+          
+          {posts.slice(0, 3).map((post) => (
+            <View key={post.id} style={styles.postItem}>
+              <View style={styles.postHeader}>
+                <Text style={styles.postTitle}>{post.title}</Text>
+                {post.is_pinned && (
+                  <View style={styles.pinnedBadge}>
+                    <Text style={styles.pinnedBadgeText}>📌 Pinned</Text>
+                  </View>
+                )}
+              </View>
+              
+              <Text style={styles.postContent} numberOfLines={3}>
+                {post.content}
+              </Text>
+              
+              {post.image_url && (
+                <Image source={{ uri: post.image_url }} style={styles.postImage} />
+              )}
+              
+              <View style={styles.postFooter}>
+                <Text style={styles.postAuthor}>
+                  By {post.author_name || 'Unknown'}
+                </Text>
+                <Text style={styles.postDate}>
+                  {new Date(post.created_at).toLocaleDateString()}
+                </Text>
+                <TouchableOpacity
+                  style={styles.postLikeButton}
+                  onPress={() => handlePostLike(post.id)}
+                >
+                  <Text style={[
+                    styles.postLikeIcon,
+                    postLikes[post.id]?.some(like => like.user_id === user.id) && styles.likedIcon
+                  ]}>
+                    ❤️
+                  </Text>
+                  <Text style={styles.postLikeCount}>
+                    {postLikes[post.id]?.length || 0}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          ))}
+          
+          {posts.length > 3 && (
+            <TouchableOpacity
+              style={styles.viewAllButton}
+              onPress={() => setActiveTab('feed')}
+            >
+              <Text style={styles.viewAllButtonText}>View All Posts</Text>
+            </TouchableOpacity>
+          )}
         </View>
       )}
 
@@ -1608,7 +1774,8 @@ export default function CommunityDetailScreen({ route, navigation }) {
     const allContent = [
       ...events.map(event => ({ ...event, type: 'event', created_at: event.created_at, is_pinned: false })),
       ...polls.map(poll => ({ ...poll, type: 'poll', created_at: poll.created_at, is_pinned: false })),
-      ...announcements.map(announcement => ({ ...announcement, type: 'announcement', created_at: announcement.created_at, is_pinned: announcement.is_pinned || false }))
+      ...announcements.map(announcement => ({ ...announcement, type: 'announcement', created_at: announcement.created_at, is_pinned: announcement.is_pinned || false })),
+      ...posts.map(post => ({ ...post, type: 'post', created_at: post.created_at, is_pinned: post.is_pinned || false }))
     ].sort((a, b) => {
       // First sort by pinned status (pinned items first)
       if (a.is_pinned && !b.is_pinned) return -1;
@@ -1781,6 +1948,56 @@ export default function CommunityDetailScreen({ route, navigation }) {
                     <Text style={styles.feedItemAuthor}>
                       By {item.users?.name || 'Unknown'}
                     </Text>
+                  </View>
+                </View>
+              );
+            } else if (item.type === 'post') {
+              return (
+                <View key={`post-${item.id}`} style={[styles.feedItem, item.is_pinned && styles.pinnedFeedItem]}>
+                  <View style={styles.feedItemHeader}>
+                    <View style={styles.feedItemTypeContainer}>
+                      <Text style={styles.feedItemType}>📝 Post</Text>
+                      {item.is_pinned && (
+                        <Text style={styles.pinnedBadge}>📌 Pinned</Text>
+                      )}
+                    </View>
+                    <View style={styles.feedItemHeaderRight}>
+                      <Text style={styles.feedItemDate}>
+                        {new Date(item.created_at).toLocaleDateString()}
+                      </Text>
+                      <TouchableOpacity
+                        style={styles.feedItemMenuButton}
+                        onPress={() => setShowItemActions(item.id)}
+                      >
+                        <Text style={styles.feedItemMenuIcon}>⋯</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                  <Text style={styles.feedItemTitle}>{item.title}</Text>
+                  <Text style={styles.feedItemDescription}>{item.content}</Text>
+                  
+                  {item.image_url && (
+                    <Image source={{ uri: item.image_url }} style={styles.feedItemImage} />
+                  )}
+                  
+                  <View style={styles.feedItemFooter}>
+                    <Text style={styles.feedItemAuthor}>
+                      By {item.author_name || 'Unknown'}
+                    </Text>
+                    <TouchableOpacity
+                      style={styles.feedItemLikeButton}
+                      onPress={() => handlePostLike(item.id)}
+                    >
+                      <Text style={[
+                        styles.feedItemLikeIcon,
+                        postLikes[item.id]?.some(like => like.user_id === user.id) && styles.likedIcon
+                      ]}>
+                        ❤️
+                      </Text>
+                      <Text style={styles.feedItemLikeCount}>
+                        {postLikes[item.id]?.length || 0}
+                      </Text>
+                    </TouchableOpacity>
                   </View>
                 </View>
               );
@@ -2089,6 +2306,55 @@ export default function CommunityDetailScreen({ route, navigation }) {
         </View>
       </Modal>
 
+      {/* Create Post Modal */}
+      <Modal visible={showCreatePost} animationType="slide">
+        <View style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Create Post</Text>
+            <TouchableOpacity onPress={() => setShowCreatePost(false)}>
+              <Text style={styles.closeButton}>✕</Text>
+            </TouchableOpacity>
+          </View>
+          <ScrollView style={styles.modalContent}>
+            <TextInput
+              style={styles.input}
+              placeholder="Post Title *"
+              value={postForm.title}
+              onChangeText={(text) => setPostForm({ ...postForm, title: text })}
+            />
+            
+            <TextInput 
+              style={[styles.input, styles.textArea]} 
+              placeholder="Post Content *" 
+              value={postForm.content} 
+              onChangeText={(text) => setPostForm({ ...postForm, content: text })}
+              multiline
+              numberOfLines={5}
+            />
+
+            <TextInput
+              style={styles.input}
+              placeholder="Image URL (optional)"
+              value={postForm.imageUrl}
+              onChangeText={(text) => setPostForm({ ...postForm, imageUrl: text })}
+            />
+
+            <TouchableOpacity
+              style={styles.checkboxContainer}
+              onPress={() => setPostForm({ ...postForm, isPinned: !postForm.isPinned })}
+            >
+              <Text style={styles.checkboxText}>
+                {postForm.isPinned ? '☑️' : '☐'} Pin Post
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.submitButton} onPress={createPost}>
+              <Text style={styles.submitButtonText}>Create Post</Text>
+            </TouchableOpacity>
+          </ScrollView>
+        </View>
+      </Modal>
+
       {/* Create Sub-Community Modal */}
       <Modal visible={showCreateSubCommunity} animationType="slide">
         <View style={styles.modalContainer}>
@@ -2262,6 +2528,17 @@ export default function CommunityDetailScreen({ route, navigation }) {
                 <Text style={styles.contentTypeTitle}>Announcement</Text>
                 <Text style={styles.contentTypeDescription}>Create a community announcement</Text>
               </TouchableOpacity>
+              
+              {(userRole === 'admin' || userRole === 'moderator') && (
+                <TouchableOpacity
+                  style={styles.contentTypeOption}
+                  onPress={() => handleCreateContent('post')}
+                >
+                  <Text style={styles.contentTypeIcon}>📝</Text>
+                  <Text style={styles.contentTypeTitle}>Post</Text>
+                  <Text style={styles.contentTypeDescription}>Create a community post</Text>
+                </TouchableOpacity>
+              )}
               
               {(userRole === 'admin' || userRole === 'moderator') && (
                 <TouchableOpacity
@@ -3885,6 +4162,124 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 8,
+  },
+  // Posts Section Styles
+  postsSection: {
+    marginTop: 20,
+  },
+  postsHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  postItem: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#E2EDF1',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  postHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 8,
+  },
+  postTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#08313B',
+    flex: 1,
+    marginRight: 8,
+  },
+  pinnedBadgeText: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#8B0000',
+  },
+  postContent: {
+    fontSize: 14,
+    color: '#4B6A75',
+    lineHeight: 20,
+    marginBottom: 12,
+  },
+  postImage: {
+    width: '100%',
+    height: 200,
+    borderRadius: 8,
+    marginBottom: 12,
+  },
+  postFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#E2EDF1',
+  },
+  postAuthor: {
+    fontSize: 12,
+    color: '#7aa0ac',
+    fontStyle: 'italic',
+  },
+  postDate: {
+    fontSize: 12,
+    color: '#7aa0ac',
+  },
+  postLikeButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  postLikeIcon: {
+    fontSize: 16,
+    marginRight: 4,
+  },
+  likedIcon: {
+    color: '#FF6B6B',
+  },
+  postLikeCount: {
+    fontSize: 12,
+    color: '#4B6A75',
+    fontWeight: '500',
+  },
+  viewAllButton: {
+    backgroundColor: '#F8FBFC',
+    borderRadius: 8,
+    padding: 12,
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  viewAllButtonText: {
+    color: '#08313B',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  // Feed Item Styles for Posts
+  feedItemImage: {
+    width: '100%',
+    height: 200,
+    borderRadius: 8,
+    marginVertical: 12,
+  },
+  feedItemLikeButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  feedItemLikeIcon: {
+    fontSize: 16,
+    marginRight: 4,
+  },
+  feedItemLikeCount: {
+    fontSize: 12,
+    color: '#4B6A75',
+    fontWeight: '500',
   },
   // Content Type Selector Styles
   contentTypeSelector: {
