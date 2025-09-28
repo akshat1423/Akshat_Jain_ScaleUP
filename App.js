@@ -1,13 +1,19 @@
 import React from 'react';
+import { Text, View } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import CommunitiesScreen from './src/screens/CommunitiesScreen';
-import NotificationsScreen from './src/screens/NotificationsScreen';
-import ProfileScreen from './src/screens/ProfileScreen';
 import { StoreProvider } from './src/state/store';
 import { StatusBar } from 'expo-status-bar';
 
 const Tab = createBottomTabNavigator();
+
+function DummyScreen({ name }) {
+  return (
+    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+      <Text>{name} Screen</Text>
+    </View>
+  );
+}
 
 export default function App() {
   return (
@@ -22,9 +28,9 @@ export default function App() {
             tabBarInactiveTintColor: '#7aa0ac',
           }}
         >
-          <Tab.Screen name="Communities" component={CommunitiesScreen} />
-          <Tab.Screen name="Notifications" component={NotificationsScreen} />
-          <Tab.Screen name="Profile" component={ProfileScreen} />
+          <Tab.Screen name="Communities" children={() => <DummyScreen name="Communities" />} />
+          <Tab.Screen name="Notifications" children={() => <DummyScreen name="Notifications" />} />
+          <Tab.Screen name="Profile" children={() => <DummyScreen name="Profile" />} />
         </Tab.Navigator>
       </NavigationContainer>
     </StoreProvider>
