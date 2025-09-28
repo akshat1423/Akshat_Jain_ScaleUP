@@ -1,30 +1,95 @@
 // React Native File Picker Utility
-// This is a mock implementation for demonstration purposes
-// In a real app, you would use libraries like:
-// - react-native-document-picker for documents
-// - react-native-image-picker for images
-// - react-native-audio-recorder-player for audio
+// Using Expo's built-in file pickers
 
 import { Alert } from 'react-native';
+import * as DocumentPicker from 'expo-document-picker';
+import * as ImagePicker from 'expo-image-picker';
 
 export const pickFile = async (type) => {
-  return new Promise((resolve, reject) => {
-    Alert.alert(
-      'File Selection',
-      `Select ${type} file`,
-      [
-        { text: 'Cancel', onPress: () => reject(new Error('User cancelled')) },
-        { 
-          text: 'Simulate Upload', 
-          onPress: () => {
-            // Create a mock file object for demonstration
-            const mockFile = createMockFile(type);
-            resolve(mockFile);
-          }
-        }
-      ]
-    );
+  try {
+    if (type === 'image') {
+      return await pickImage();
+    } else if (type === 'document') {
+      return await pickDocument();
+    } else if (type === 'audio') {
+      return await pickAudio();
+    } else {
+      throw new Error(`Unsupported file type: ${type}`);
+    }
+  } catch (error) {
+    if (error.message === 'User cancelled') {
+      throw error;
+    }
+    console.error('File picker error:', error);
+    throw new Error(`Failed to pick ${type} file: ${error.message}`);
+  }
+};
+
+const pickImage = async () => {
+  // Request permission
+  const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+  if (status !== 'granted') {
+    throw new Error('Permission to access media library was denied');
+  }
+
+  const result = await ImagePicker.launchImageLibraryAsync({
+    mediaTypes: ImagePicker.MediaTypeOptions.Images,
+    allowsEditing: true,
+    aspect: [4, 3],
+    quality: 0.8,
   });
+
+  if (result.canceled) {
+    throw new Error('User cancelled');
+  }
+
+  const asset = result.assets[0];
+  return {
+    name: asset.fileName || `image_${Date.now()}.jpg`,
+    type: 'image/jpeg',
+    size: asset.fileSize || 0,
+    uri: asset.uri,
+    width: asset.width,
+    height: asset.height,
+  };
+};
+
+const pickDocument = async () => {
+  const result = await DocumentPicker.getDocumentAsync({
+    type: ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'text/plain'],
+    copyToCacheDirectory: true,
+  });
+
+  if (result.canceled) {
+    throw new Error('User cancelled');
+  }
+
+  const asset = result.assets[0];
+  return {
+    name: asset.name,
+    type: asset.mimeType,
+    size: asset.size,
+    uri: asset.uri,
+  };
+};
+
+const pickAudio = async () => {
+  const result = await DocumentPicker.getDocumentAsync({
+    type: ['audio/mpeg', 'audio/wav', 'audio/ogg', 'audio/mp4'],
+    copyToCacheDirectory: true,
+  });
+
+  if (result.canceled) {
+    throw new Error('User cancelled');
+  }
+
+  const asset = result.assets[0];
+  return {
+    name: asset.name,
+    type: asset.mimeType,
+    size: asset.size,
+    uri: asset.uri,
+  };
 };
 
 const createMockFile = (type) => {

@@ -38,6 +38,7 @@ export default function CommunityDetailScreen({ route, navigation }) {
   const [chatMessages, setChatMessages] = useState([]);
   const [newMessage, setNewMessage] = useState('');
   const [sendingMessage, setSendingMessage] = useState(false);
+  const [uploadingFile, setUploadingFile] = useState(false);
   const [showAttachmentOptions, setShowAttachmentOptions] = useState(false);
   const [showActionOptions, setShowActionOptions] = useState(false);
   const [showItemActions, setShowItemActions] = useState(null);
@@ -382,23 +383,26 @@ export default function CommunityDetailScreen({ route, navigation }) {
   const sendMessage = async (messageType = 'text', fileUrl = null, fileData = null) => {
     if (!newMessage.trim() && messageType === 'text') return;
 
+    console.log('Sending message:', { messageType, fileUrl, fileData, message: newMessage.trim() });
     setSendingMessage(true);
     try {
       if (replyingTo) {
         await sendReply();
       } else {
-        await api.sendChatMessage({
+        const result = await api.sendChatMessage({
           communityId: community.id,
           message: newMessage.trim(),
           messageType: messageType,
           fileUrl: fileUrl,
           fileData: fileData
         });
+        console.log('Message sent successfully:', result);
         setNewMessage('');
         await loadChatMessages();
       }
     } catch (error) {
-      Alert.alert('Error', 'Failed to send message');
+      console.error('Error sending message:', error);
+      Alert.alert('Error', `Failed to send message: ${error.message}`);
     } finally {
       setSendingMessage(false);
     }
@@ -616,11 +620,17 @@ export default function CommunityDetailScreen({ route, navigation }) {
     setShowAttachmentOptions(false);
     
     try {
+      console.log('Selecting file type:', type);
       // Use the file picker utility
       const file = await pickFile(type);
+      console.log('File selected:', file);
       
       // Validate the file
       validateFile(file, type);
+      console.log('File validated successfully');
+      
+      // Show uploading indicator
+      setUploadingFile(true);
       
       // Send the message with the file
       setSendingMessage(true);
@@ -628,11 +638,13 @@ export default function CommunityDetailScreen({ route, navigation }) {
       setNewMessage('');
       
     } catch (error) {
+      console.error('Error in handleAttachmentSelect:', error);
       if (error.message !== 'User cancelled') {
         Alert.alert('File Selection Error', error.message);
       }
     } finally {
       setSendingMessage(false);
+      setUploadingFile(false);
     }
   };
 
@@ -858,8 +870,6 @@ export default function CommunityDetailScreen({ route, navigation }) {
         <Image source={{ uri: community.logoUrl }} style={styles.communityLogo} />
       )}
       
-      <Text style={styles.communityName}>{community.name}</Text>
-      
       {community.description && (
         <Text style={styles.communityDescription}>{community.description}</Text>
       )}
@@ -962,290 +972,339 @@ export default function CommunityDetailScreen({ route, navigation }) {
       )}
     </ScrollView>
   );
-
-  const renderChat = () => (
-    <View style={styles.chatContainer}>
-      <View style={styles.chatHeader}>
-        <Text style={styles.chatHeaderTitle}>Community Chat</Text>
-        <Text style={styles.chatHeaderSubtitle}>
-          {chatMessages.length} messages • {members.length} members online
-        </Text>
-      </View>
-
-      {chatMessages.length === 0 ? (
-        <View style={styles.chatList}>
-          <ShimmerList 
-            count={4} 
-            itemComponent={<ShimmerMessage />}
-            style={{ padding: 16 }}
-          />
-        </View>
-      ) : (
-        <FlatList
-          data={chatMessages}
-          keyExtractor={(item) => item.id}
-          inverted={true}
-          renderItem={({ item }) => (
-            <View style={[
-              styles.messageItem,
-              item.user_id === user.id && styles.ownMessage
-            ]}>
-              <View style={styles.messageHeader}>
-                <Text style={[
-                  styles.messageAuthor,
-                  item.user_id === user.id && styles.ownMessageAuthor
-                ]}>
-                  {item.users?.name || 'Unknown'}
-                </Text>
-                <Text style={[
-                  styles.messageTime,
-                  item.user_id === user.id && styles.ownMessageTime
-                ]}>
-                  {new Date(item.created_at).toLocaleTimeString()}
-                </Text>
-              </View>
-            {item.message_type === 'poll_request' || item.message_type === 'announcement_reminder' ? (
-              <TouchableOpacity
-                style={styles.reminderMessage}
-                onPress={() => handleReminderMessageClick(item.message_type, item.poll_id || item.announcement_id)}
-              >
-                <Text style={styles.reminderMessageText}>{item.message}</Text>
-                <Text style={styles.reminderMessageAction}>Tap to view →</Text>
-              </TouchableOpacity>
-            ) : (
-              <Text style={[
-                styles.messageText,
-                item.user_id === user.id && styles.ownMessageText
-              ]}>
-                {item.message}
-              </Text>
-            )}
-            {item.message_type !== 'text' && item.message_type !== 'poll_request' && item.message_type !== 'announcement_reminder' && (
-              <View style={styles.messageAttachment}>
-                {item.message_type === 'image' && item.file_url ? (
-                  <View style={styles.imagePreview}>
-                    <Image 
-                      source={{ uri: item.file_url }} 
-                      style={styles.previewImage}
-                      resizeMode="cover"
-                    />
-                    <View style={styles.imageOverlay}>
-                      <Text style={styles.messageType}>📷 Image</Text>
-                      <TouchableOpacity 
-                        style={styles.downloadButton}
-                        onPress={async () => {
-                          try {
-                            const downloadUrl = await api.downloadFile(item.file_url);
-                            // In React Native, you would use Linking.openURL instead of window.open
-                            // For now, show the URL in an alert
-                            Alert.alert('Download URL', downloadUrl);
-                          } catch (error) {
-                            Alert.alert('Download Error', 'Failed to download file');
-                          }
-                        }}
+  const renderChat = () => {
+    return (
+      <View style={styles.chatContainer}>
+        {chatMessages.length === 0 ? (
+          <View style={styles.chatList}>
+            <ShimmerList
+              count={4}
+              itemComponent={<ShimmerMessage />}
+              style={{ padding: 16 }}
+            />
+          </View>
+        ) : (
+          <FlatList
+            data={chatMessages}
+            keyExtractor={(item) => item.id}
+            inverted={true}
+            renderItem={({ item }) => {
+              return (
+                <View
+                  style={[
+                    styles.messageItem,
+                    item.user_id === user.id && styles.ownMessage,
+                  ]}
+                >
+                  <View style={styles.messageHeader}>
+                    <Text
+                      style={[
+                        styles.messageAuthor,
+                        item.user_id === user.id && styles.ownMessageAuthor,
+                      ]}
+                    >
+                      {item.users?.name || 'Unknown'}
+                    </Text>
+                  </View>
+  
+                  {(item.message_type === 'poll_request' ||
+                    item.message_type === 'announcement_reminder') ? (
+                    <TouchableOpacity
+                      style={styles.reminderMessage}
+                      onPress={() =>
+                        handleReminderMessageClick(
+                          item.message_type,
+                          item.poll_id || item.announcement_id
+                        )
+                      }
+                    >
+                      <Text
+                        style={[
+                          styles.reminderMessageText,
+                          item.user_id === user.id && styles.ownReminderMessageText,
+                        ]}
                       >
-                        <Text style={styles.downloadButtonText}>Download</Text>
+                        {item.message}
+                      </Text>
+                      <Text
+                        style={[
+                          styles.reminderMessageAction,
+                          item.user_id === user.id && styles.ownReminderMessageAction,
+                        ]}
+                      >
+                        Tap to view →
+                      </Text>
+                    </TouchableOpacity>
+                  ) : (
+                    <Text
+                      style={[
+                        styles.messageText,
+                        item.user_id === user.id && styles.ownMessageText,
+                      ]}
+                    >
+                      {item.message}
+                    </Text>
+                  )}
+  
+                  {item.message_type !== 'text' &&
+                    item.message_type !== 'poll_request' &&
+                    item.message_type !== 'announcement_reminder' && (
+                      <View style={styles.messageAttachment}>
+                        {item.message_type === 'image' && item.file_url ? (
+                          <View style={styles.imagePreview}>
+                            <Image
+                              source={{ uri: item.file_url }}
+                              style={styles.previewImage}
+                              resizeMode="cover"
+                            />
+                            <View style={styles.imageOverlay}>
+                              <Text style={styles.messageType}>📷 Image</Text>
+                              <TouchableOpacity
+                                style={styles.downloadButton}
+                                onPress={async () => {
+                                  try {
+                                    const downloadUrl = await api.downloadFile(
+                                      item.file_url
+                                    );
+                                    Alert.alert('Download URL', downloadUrl);
+                                  } catch (error) {
+                                    Alert.alert('Download Error', 'Failed to download file');
+                                  }
+                                }}
+                              >
+                                <Text style={styles.downloadButtonText}>Download</Text>
+                              </TouchableOpacity>
+                            </View>
+                          </View>
+                        ) : (
+                          <React.Fragment>
+                            <Text
+                              style={[
+                                styles.messageType,
+                                item.user_id === user.id && styles.ownMessageType,
+                              ]}
+                            >
+                              {item.message_type === 'audio'
+                                ? '🎵 Audio'
+                                : item.message_type === 'document'
+                                ? '📄 Document'
+                                : item.message_type === 'file'
+                                ? '📎 File'
+                                : 'System Message'}
+                            </Text>
+                            {item.file_url && (
+                              <TouchableOpacity
+                                style={styles.downloadButton}
+                                onPress={async () => {
+                                  try {
+                                    const downloadUrl = await api.downloadFile(
+                                      item.file_url
+                                    );
+                                    Alert.alert('Download URL', downloadUrl);
+                                  } catch (error) {
+                                    Alert.alert('Download Error', 'Failed to download file');
+                                  }
+                                }}
+                              >
+                                <Text style={styles.downloadButtonText}>Download</Text>
+                              </TouchableOpacity>
+                            )}
+                          </React.Fragment>
+                        )}
+                      </View>
+                    )}
+  
+                  {/* Message Interactions */}
+                  <View style={styles.messageInteractions}>
+                    {/* Reactions */}
+                    <View style={styles.reactionsContainer}>
+                      {messageReactions[item.id]?.map((reaction, index) => (
+                        <TouchableOpacity
+                          key={index}
+                          style={styles.reactionButton}
+                          onPress={() => handleReaction(item.id, reaction.emoji)}
+                        >
+                          <Text style={styles.reactionEmoji}>{reaction.emoji}</Text>
+                          <Text style={styles.reactionCount}>
+                            {
+                              messageReactions[item.id]?.filter(
+                                (r) => r.emoji === reaction.emoji
+                              ).length
+                            }
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                      <TouchableOpacity
+                        style={styles.addReactionButton}
+                        onPress={() => setShowReactionPicker(item.id)}
+                      >
+                        <Text style={styles.addReactionIcon}>+</Text>
                       </TouchableOpacity>
                     </View>
-                  </View>
-                ) : (
-                  <>
-                    <Text style={styles.messageType}>
-                      {item.message_type === 'audio' ? '🎵 Audio' :
-                       item.message_type === 'document' ? '📄 Document' : 
-                       item.message_type === 'file' ? '📎 File' : 'System Message'}
-                    </Text>
-                    {item.file_url && (
-                      <TouchableOpacity 
-                        style={styles.downloadButton}
-                        onPress={async () => {
-                          try {
-                            const downloadUrl = await api.downloadFile(item.file_url);
-                            // In React Native, you would use Linking.openURL instead of window.open
-                            // For now, show the URL in an alert
-                            Alert.alert('Download URL', downloadUrl);
-                          } catch (error) {
-                            Alert.alert('Download Error', 'Failed to download file');
-                          }
-                        }}
+  
+                    {/* Action Buttons */}
+                    <View style={styles.messageActionButtons}>
+                      <TouchableOpacity
+                        style={styles.messageActionButton}
+                        onPress={() => handleLike(item.id)}
                       >
-                        <Text style={styles.downloadButtonText}>Download</Text>
+                        <Text
+                          style={[
+                            styles.messageActionIcon,
+                            messageLikes[item.id]?.some(
+                              (like) => like.user_id === user.id
+                            ) && styles.likedIcon,
+                          ]}
+                        >
+                          ❤️
+                        </Text>
+                        <Text style={styles.messageActionCount}>
+                          {messageLikes[item.id]?.length || 0}
+                        </Text>
                       </TouchableOpacity>
-                    )}
-                  </>
-                )}
-              </View>
-            )}
-            
-            {/* Message Interactions */}
-            <View style={styles.messageInteractions}>
-              {/* Reactions */}
-              <View style={styles.reactionsContainer}>
-                {messageReactions[item.id]?.map((reaction, index) => (
-                  <TouchableOpacity
-                    key={index}
-                    style={styles.reactionButton}
-                    onPress={() => handleReaction(item.id, reaction.emoji)}
-                  >
-                    <Text style={styles.reactionEmoji}>{reaction.emoji}</Text>
-                    <Text style={styles.reactionCount}>
-                      {messageReactions[item.id]?.filter(r => r.emoji === reaction.emoji).length}
+  
+                      <TouchableOpacity
+                        style={styles.messageActionButton}
+                        onPress={() => handleReply(item.id, item.message)}
+                      >
+                        <Text style={styles.messageActionIcon}>💬</Text>
+                      </TouchableOpacity>
+                    </View>
+  
+                    {/* Timestamp at bottom */}
+                    <Text
+                      style={[
+                        styles.messageTime,
+                        item.user_id === user.id && styles.ownMessageTime,
+                      ]}
+                    >
+                      {new Date(item.created_at).toLocaleTimeString()}
                     </Text>
-                  </TouchableOpacity>
-                ))}
+                  </View>
+                </View>
+              );
+            }}
+            style={styles.chatList}
+            showsVerticalScrollIndicator={false}
+          />
+        )}
+  
+        <View style={styles.messageInputContainer}>
+          {/* Reply Indicator */}
+          {replyingTo && (
+            <View style={styles.replyIndicator}>
+              <View style={styles.replyIndicatorContent}>
+                <Text style={styles.replyIndicatorText}>
+                  Replying to: {replyingTo.text.substring(0, 50)}...
+                </Text>
                 <TouchableOpacity
-                  style={styles.addReactionButton}
-                  onPress={() => setShowReactionPicker(item.id)}
+                  style={styles.cancelReplyButton}
+                  onPress={() => {
+                    setReplyingTo(null);
+                    setNewMessage('');
+                  }}
                 >
-                  <Text style={styles.addReactionIcon}>+</Text>
+                  <Text style={styles.cancelReplyIcon}>✕</Text>
                 </TouchableOpacity>
               </View>
-
-              {/* Action Buttons */}
-              <View style={styles.messageActionButtons}>
-                <TouchableOpacity
-                  style={styles.messageActionButton}
-                  onPress={() => handleLike(item.id)}
-                >
-                  <Text style={[
-                    styles.messageActionIcon,
-                    messageLikes[item.id]?.some(like => like.user_id === user.id) && styles.likedIcon
-                  ]}>
-                    ❤️
-                  </Text>
-                  <Text style={styles.messageActionCount}>
-                    {messageLikes[item.id]?.length || 0}
-                  </Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={styles.messageActionButton}
-                  onPress={() => handleReply(item.id, item.message)}
-                >
-                  <Text style={styles.messageActionIcon}>💬</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
             </View>
           )}
-          style={styles.chatList}
-          showsVerticalScrollIndicator={false}
-        />
-      )}
-      
-      <View style={styles.messageInputContainer}>
-        {/* Reply Indicator */}
-        {replyingTo && (
-          <View style={styles.replyIndicator}>
-            <View style={styles.replyIndicatorContent}>
-              <Text style={styles.replyIndicatorText}>
-                Replying to: {replyingTo.text.substring(0, 50)}...
-              </Text>
+  
+          <View style={styles.messageInputRow}>
+            <TouchableOpacity
+              style={styles.attachmentButton}
+              onPress={() => setShowAttachmentOptions(!showAttachmentOptions)}
+            >
+              <Text style={styles.attachmentButtonText}>📎</Text>
+            </TouchableOpacity>
+  
+            <TouchableOpacity
+              style={styles.actionButton}
+              onPress={() => setShowActionOptions(!showActionOptions)}
+            >
+              <Text style={styles.actionButtonText}>⚡</Text>
+            </TouchableOpacity>
+  
+            <TextInput
+              style={styles.messageInput}
+              placeholder="Type a message..."
+              value={newMessage}
+              onChangeText={setNewMessage}
+              multiline
+              maxLength={500}
+            />
+  
+            <TouchableOpacity
+              style={[
+                styles.sendButton,
+                (sendingMessage || uploadingFile) && styles.sendButtonDisabled,
+              ]}
+              onPress={() => sendMessage()}
+              disabled={sendingMessage || uploadingFile || !newMessage.trim()}
+            >
+              {sendingMessage || uploadingFile ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Text style={styles.sendButtonText}>Send</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+  
+          <View style={styles.messageActions}>
+            <Text style={styles.characterCount}>{newMessage.length}/500</Text>
+            {uploadingFile && (
+              <Text style={styles.uploadingText}>Uploading file...</Text>
+            )}
+          </View>
+  
+          {/* Attachment Options */}
+          {showAttachmentOptions && (
+            <View style={styles.attachmentOptions}>
               <TouchableOpacity
-                style={styles.cancelReplyButton}
-                onPress={() => {
-                  setReplyingTo(null);
-                  setNewMessage('');
-                }}
+                style={styles.attachmentOption}
+                onPress={() => handleAttachmentSelect('image')}
               >
-                <Text style={styles.cancelReplyIcon}>✕</Text>
+                <Text style={styles.attachmentOptionIcon}>📷</Text>
+                <Text style={styles.attachmentOptionText}>Image</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.attachmentOption}
+                onPress={() => handleAttachmentSelect('audio')}
+              >
+                <Text style={styles.attachmentOptionIcon}>🎵</Text>
+                <Text style={styles.attachmentOptionText}>Audio</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.attachmentOption}
+                onPress={() => handleAttachmentSelect('document')}
+              >
+                <Text style={styles.attachmentOptionIcon}>📄</Text>
+                <Text style={styles.attachmentOptionText}>Document</Text>
               </TouchableOpacity>
             </View>
-          </View>
-        )}
-
-        <View style={styles.messageInputRow}>
-          <TouchableOpacity
-            style={styles.attachmentButton}
-            onPress={() => setShowAttachmentOptions(!showAttachmentOptions)}
-          >
-            <Text style={styles.attachmentButtonText}>📎</Text>
-          </TouchableOpacity>
-          
-          <TouchableOpacity
-            style={styles.actionButton}
-            onPress={() => setShowActionOptions(!showActionOptions)}
-          >
-            <Text style={styles.actionButtonText}>⚡</Text>
-          </TouchableOpacity>
-
-          <TextInput
-            style={styles.messageInput}
-            placeholder="Type a message..."
-            value={newMessage}
-            onChangeText={setNewMessage}
-            multiline
-            maxLength={500}
-          />
-          
-          <TouchableOpacity
-            style={[styles.sendButton, sendingMessage && styles.sendButtonDisabled]}
-            onPress={() => sendMessage()}
-            disabled={sendingMessage || !newMessage.trim()}
-          >
-            {sendingMessage ? (
-              <ActivityIndicator size="small" color="#fff" />
-            ) : (
-              <Text style={styles.sendButtonText}>Send</Text>
-            )}
-          </TouchableOpacity>
+          )}
+  
+          {/* Action Options */}
+          {showActionOptions && (
+            <View style={styles.actionOptions}>
+              <TouchableOpacity style={styles.actionOption} onPress={handlePollRequest}>
+                <Text style={styles.actionOptionIcon}>📊</Text>
+                <Text style={styles.actionOptionText}>Request Poll</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.actionOption}
+                onPress={handleAnnouncementReminder}
+              >
+                <Text style={styles.actionOptionIcon}>📢</Text>
+                <Text style={styles.actionOptionText}>Announcement Reminder</Text>
+              </TouchableOpacity>
+            </View>
+          )}
         </View>
-        
-        <View style={styles.messageActions}>
-          <Text style={styles.characterCount}>
-            {newMessage.length}/500
-          </Text>
-        </View>
-
-        {/* Attachment Options */}
-        {showAttachmentOptions && (
-          <View style={styles.attachmentOptions}>
-            <TouchableOpacity
-              style={styles.attachmentOption}
-              onPress={() => handleAttachmentSelect('image')}
-            >
-              <Text style={styles.attachmentOptionIcon}>📷</Text>
-              <Text style={styles.attachmentOptionText}>Image</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.attachmentOption}
-              onPress={() => handleAttachmentSelect('audio')}
-            >
-              <Text style={styles.attachmentOptionIcon}>🎵</Text>
-              <Text style={styles.attachmentOptionText}>Audio</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.attachmentOption}
-              onPress={() => handleAttachmentSelect('document')}
-            >
-              <Text style={styles.attachmentOptionIcon}>📄</Text>
-              <Text style={styles.attachmentOptionText}>Document</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-
-        {/* Action Options */}
-        {showActionOptions && (
-          <View style={styles.actionOptions}>
-            <TouchableOpacity
-              style={styles.actionOption}
-              onPress={handlePollRequest}
-            >
-              <Text style={styles.actionOptionIcon}>📊</Text>
-              <Text style={styles.actionOptionText}>Request Poll</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.actionOption}
-              onPress={handleAnnouncementReminder}
-            >
-              <Text style={styles.actionOptionIcon}>📢</Text>
-              <Text style={styles.actionOptionText}>Announcement Reminder</Text>
-            </TouchableOpacity>
-          </View>
-        )}
       </View>
-    </View>
-  );
+    );
+  };
+  
 
   const renderEvents = () => (
     <View style={styles.tabContent}>
@@ -1780,22 +1839,8 @@ export default function CommunityDetailScreen({ route, navigation }) {
 
   if (loading) {
     return (
-      <View style={styles.container}>
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()}>
-            <Text style={styles.backButton}>← Back</Text>
-          </TouchableOpacity>
-          <LoadingIcon type="dots" color="#08313B" text="" />
-          <View style={styles.headerRight} />
-        </View>
-        
-        <View style={styles.loadingContent}>
-          <ShimmerList 
-            count={3} 
-            itemComponent={<ShimmerFeedItem />}
-            style={{ padding: 16 }}
-          />
-        </View>
+      <View style={styles.loadingContainer}>
+        <LoadingIcon type="dots" color="#08313B" text="Loading community..." />
       </View>
     );
   }
@@ -2561,7 +2606,7 @@ const styles = StyleSheet.create({
   },
   chatContainer: {
     flex: 1,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: '#E8F5E8',
   },
   chatList: {
     flex: 1,
@@ -2569,7 +2614,7 @@ const styles = StyleSheet.create({
     paddingTop: 8,
   },
   messageItem: {
-    backgroundColor: '#fff',
+    backgroundColor: '#D4F1D4',
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderRadius: 20,
@@ -2588,43 +2633,45 @@ const styles = StyleSheet.create({
   },
   ownMessage: {
     alignSelf: 'flex-end',
-    backgroundColor: '#007AFF',
-    borderColor: '#007AFF',
+    backgroundColor: '#D4F1D4',
+    borderColor: '#D4F1D4',
   },
   messageAuthor: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#6B7280',
+    color: 'black',
     marginBottom: 6,
   },
   messageText: {
     fontSize: 15,
-    color: '#1F2937',
+    color: '#000000',
     lineHeight: 20,
     marginBottom: 4,
   },
   messageTime: {
     fontSize: 11,
-    color: '#9CA3AF',
+    color: '#6B7280',
     textAlign: 'right',
+    marginTop: 4,
   },
   // Own message text colors
   ownMessageAuthor: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#E5E7EB',
+    color: 'black',
     marginBottom: 6,
   },
   ownMessageText: {
     fontSize: 15,
-    color: '#FFFFFF',
+    color: '#000000',
     lineHeight: 20,
     marginBottom: 4,
   },
   ownMessageTime: {
     fontSize: 11,
-    color: '#E5E7EB',
+    color: '#000000',
     textAlign: 'right',
+    marginTop: 4,
   },
   messageInputContainer: {
     backgroundColor: '#fff',
@@ -2917,11 +2964,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#4B6A75',
   },
-  ownMessage: {
-    backgroundColor: '#E8F5E8',
-    alignSelf: 'flex-end',
-    marginLeft: 40,
-  },
   messageHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -2941,6 +2983,9 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#7aa0ac',
     fontStyle: 'italic',
+  },
+  ownMessageType: {
+    color: '#000000',
   },
   downloadButton: {
     backgroundColor: '#08313B',
@@ -2985,6 +3030,11 @@ const styles = StyleSheet.create({
   characterCount: {
     fontSize: 12,
     color: '#7aa0ac',
+  },
+  uploadingText: {
+    fontSize: 12,
+    color: '#007AFF',
+    fontStyle: 'italic',
   },
   // Attachment and Action Options
   attachmentOptions: {
@@ -3119,6 +3169,12 @@ const styles = StyleSheet.create({
     color: '#2196F3',
     marginTop: 4,
     fontStyle: 'italic',
+  },
+  ownReminderMessageText: {
+    color: '#000000',
+  },
+  ownReminderMessageAction: {
+    color: '#000000',
   },
   // Message Interactions
   messageInteractions: {

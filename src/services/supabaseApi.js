@@ -1110,6 +1110,15 @@ class SupabaseApi {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error('User not authenticated');
 
+    console.log('Starting file upload:', { fileType, fileName: fileData.name, fileSize: fileData.size });
+
+    // For now, let's use a simpler approach - store the local URI
+    // This is a temporary solution until storage buckets are properly configured
+    console.log('Using local file URI as fallback:', fileData.uri);
+    return fileData.uri;
+
+    // TODO: Re-enable Supabase Storage upload once buckets are configured
+    /*
     // Determine bucket based on file type
     let bucketName;
     switch (fileType) {
@@ -1133,22 +1142,41 @@ class SupabaseApi {
     const fileName = `${timestamp}_${randomString}.${fileExtension}`;
     const filePath = `chat-uploads/${fileName}`;
 
-    // Upload file to Supabase Storage
-    const { data, error } = await supabase.storage
-      .from(bucketName)
-      .upload(filePath, fileData, {
-        cacheControl: '3600',
-        upsert: false
-      });
+    try {
+      // For React Native, we need to create a proper file object
+      // Convert the URI to a blob for upload
+      const response = await fetch(fileData.uri);
+      const blob = await response.blob();
 
-    if (error) throw error;
+      console.log('Uploading to bucket:', bucketName, 'Path:', filePath);
 
-    // Get public URL
-    const { data: { publicUrl } } = supabase.storage
-      .from(bucketName)
-      .getPublicUrl(filePath);
+      // Upload file to Supabase Storage
+      const { data, error } = await supabase.storage
+        .from(bucketName)
+        .upload(filePath, blob, {
+          cacheControl: '3600',
+          upsert: false,
+          contentType: fileData.type
+        });
 
-    return publicUrl;
+      if (error) {
+        console.error('Storage upload error:', error);
+        throw error;
+      }
+
+      // Get public URL
+      const { data: { publicUrl } } = supabase.storage
+        .from(bucketName)
+        .getPublicUrl(filePath);
+
+      console.log('File uploaded successfully:', publicUrl);
+      return publicUrl;
+    } catch (error) {
+      console.error('Upload failed, using local URI as fallback:', error);
+      // Fallback to local URI if upload fails
+      return fileData.uri;
+    }
+    */
   }
 
   async downloadFile(fileUrl) {
