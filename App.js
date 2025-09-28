@@ -8,6 +8,7 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createStackNavigator } from '@react-navigation/stack';
 import { StoreProvider, useStore } from './src/state/store';
 import { StatusBar } from 'expo-status-bar';
+
 import CommunitiesScreen from './src/screens/CommunitiesScreen';
 import CommunityDetailScreen from './src/screens/CommunityDetailScreen';
 import NotificationsScreen from './src/screens/NotificationsScreen';
@@ -17,12 +18,12 @@ import AuthScreen from './src/screens/AuthScreen';
 const Tab = createBottomTabNavigator();
 const Stack = createStackNavigator();
 
-// Create stack navigator for Communities
+// Stack navigator for Communities tab
 function CommunitiesStack() {
   return (
     <Stack.Navigator
       screenOptions={{
-        headerStyle: { 
+        headerStyle: {
           backgroundColor: '#08313B',
           elevation: 0,
           shadowOpacity: 0,
@@ -35,15 +36,13 @@ function CommunitiesStack() {
         headerBackTitle: 'Back',
       }}
     >
-      <Stack.Screen 
-        name="CommunitiesList" 
+      <Stack.Screen
+        name="CommunitiesList"
         component={CommunitiesScreen}
-        options={{
-          title: 'Communities',
-        }}
+        options={{ title: 'Communities' }}
       />
-      <Stack.Screen 
-        name="CommunityDetail" 
+      <Stack.Screen
+        name="CommunityDetail"
         component={CommunityDetailScreen}
         options={({ route }) => ({
           title: route.params?.communityName || 'Community',
@@ -56,8 +55,6 @@ function CommunitiesStack() {
 function MainApp() {
   const { user, authLoading } = useStore();
 
-  console.log('MainApp - user:', user, 'authLoading:', authLoading);
-
   if (authLoading) {
     return (
       <View style={styles.loadingContainer}>
@@ -68,18 +65,15 @@ function MainApp() {
   }
 
   if (!user) {
-    console.log('No user, showing AuthScreen');
     return <AuthScreen />;
   }
-
-  console.log('User authenticated, showing main app');
 
   return (
     <NavigationContainer>
       <StatusBar style="light" />
       <Tab.Navigator
         screenOptions={{
-          headerStyle: { 
+          headerStyle: {
             backgroundColor: '#08313B',
             elevation: 0,
             shadowOpacity: 0,
@@ -109,8 +103,8 @@ function MainApp() {
           },
         }}
       >
-        <Tab.Screen 
-          name="Communities" 
+        <Tab.Screen
+          name="Communities"
           component={CommunitiesStack}
           options={{
             headerShown: false,
@@ -119,8 +113,8 @@ function MainApp() {
             ),
           }}
         />
-        <Tab.Screen 
-          name="Notifications" 
+        <Tab.Screen
+          name="Notifications"
           component={NotificationsScreen}
           options={{
             tabBarIcon: ({ color, size }) => (
@@ -128,8 +122,8 @@ function MainApp() {
             ),
           }}
         />
-        <Tab.Screen 
-          name="Profile" 
+        <Tab.Screen
+          name="Profile"
           component={ProfileScreen}
           options={{
             tabBarIcon: ({ color, size }) => (
