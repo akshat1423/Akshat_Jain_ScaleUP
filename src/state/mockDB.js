@@ -2,7 +2,28 @@ let _id = 1;
 const uid = () => String(_id++);
 
 export const db = {
-  users: [{ id: 'u1', name: 'IITB Student', impact: 0, badges: [] }],
+  users: [{ 
+    id: 'u1', 
+    name: 'IITB Student', 
+    impact: 0, 
+    badges: [],
+    major: 'Computer Science Engineering',
+    year: '2025',
+    interests: ['Machine Learning', 'Web Development', 'Competitive Programming'],
+    clubs: ['Coding Club', 'Tech Society'],
+    courses: ['CS101', 'MA101', 'PH101'],
+    bio: 'Passionate about technology and innovation. Love building scalable solutions.',
+    privacySettings: {
+      profileVisibility: 'public', // 'public', 'friends', 'private'
+      showMajor: true,
+      showYear: true,
+      showInterests: true,
+      showClubs: true,
+      showCourses: false,
+      showBio: true,
+      showImpactPoints: true
+    }
+  }],
   communities: [
     { id: 'c1', name: 'IITB General', parentId: null, members: ['u1'], posts: [] },
     { id: 'c2', name: 'Hostel 8', parentId: 'c1', members: ['u1'], posts: [] },
@@ -58,5 +79,25 @@ export const api = {
     },120));
   },
   listNotifications(){ return new Promise(res => setTimeout(()=>res(db.notifications),150)); },
-  currentUser(){ return db.users[0]; }
+  currentUser(){ return db.users[0]; },
+  updateUserProfile({ userId, profileData }){
+    return new Promise(res => setTimeout(() => {
+      const user = db.users.find(u => u.id === userId);
+      if (user) {
+        Object.assign(user, profileData);
+        db.notifications.unshift({ id: uid(), text: 'Profile updated successfully', ts: Date.now() });
+      }
+      res(user);
+    }, 200));
+  },
+  updatePrivacySettings({ userId, privacySettings }){
+    return new Promise(res => setTimeout(() => {
+      const user = db.users.find(u => u.id === userId);
+      if (user) {
+        user.privacySettings = { ...user.privacySettings, ...privacySettings };
+        db.notifications.unshift({ id: uid(), text: 'Privacy settings updated', ts: Date.now() });
+      }
+      res(user);
+    }, 200));
+  }
 };
