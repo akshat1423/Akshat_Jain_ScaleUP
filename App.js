@@ -8,10 +8,12 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createStackNavigator } from '@react-navigation/stack';
 import { StoreProvider, useStore } from './src/state/store';
 import { StatusBar } from 'expo-status-bar';
+import { LoadingIcon } from './src/components/LoadingIcons';
 import CommunitiesScreen from './src/screens/CommunitiesScreen';
 import CommunityDetailScreen from './src/screens/CommunityDetailScreen';
 import NotificationsScreen from './src/screens/NotificationsScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
+import ProfileEditScreen from './src/screens/ProfileEditScreenTest';
 import AuthScreen from './src/screens/AuthScreen';
 
 const Tab = createBottomTabNavigator();
@@ -53,6 +55,42 @@ function CommunitiesStack() {
   );
 }
 
+// Create stack navigator for Profile
+function ProfileStack() {
+  return (
+    <Stack.Navigator
+      screenOptions={{
+        headerStyle: { 
+          backgroundColor: '#08313B',
+          elevation: 0,
+          shadowOpacity: 0,
+        },
+        headerTintColor: '#fff',
+        headerTitleStyle: {
+          fontWeight: '700',
+          fontSize: 18,
+        },
+        headerBackTitle: 'Back',
+      }}
+    >
+      <Stack.Screen 
+        name="ProfileMain" 
+        component={ProfileScreen}
+        options={{
+          title: 'Profile',
+        }}
+      />
+      <Stack.Screen 
+        name="ProfileEdit" 
+        component={ProfileEditScreen}
+        options={{
+          title: 'Edit Profile',
+        }}
+      />
+    </Stack.Navigator>
+  );
+}
+
 function MainApp() {
   const { user, authLoading } = useStore();
 
@@ -61,8 +99,7 @@ function MainApp() {
   if (authLoading) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#08313B" />
-        <Text style={styles.loadingText}>Loading...</Text>
+        <LoadingIcon type="wave" color="#08313B" text="Loading..." />
       </View>
     );
   }
@@ -130,8 +167,9 @@ function MainApp() {
         />
         <Tab.Screen 
           name="Profile" 
-          component={ProfileScreen}
+          component={ProfileStack}
           options={{
+            headerShown: false,
             tabBarIcon: ({ color, size }) => (
               <Text style={{ fontSize: size, color }}>👤</Text>
             ),

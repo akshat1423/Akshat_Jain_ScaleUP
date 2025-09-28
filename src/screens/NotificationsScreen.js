@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, FlatList, StyleSheet } from 'react-native';
 import { useStore } from '../state/store';
+import { ShimmerCard, ShimmerList } from '../components/ShimmerEffect';
 import { formatDistanceToNow } from 'date-fns';
 
 export default function NotificationsScreen(){
@@ -20,7 +21,17 @@ export default function NotificationsScreen(){
             </View>
           </View>
         )}
-        ListEmptyComponent={<Text style={styles.empty}>No notifications yet.</Text>}
+        ListEmptyComponent={
+          notifications === null ? (
+            <ShimmerList 
+              count={4} 
+              itemComponent={<ShimmerCard />}
+              style={{ marginTop: 16 }}
+            />
+          ) : (
+            <Text style={styles.empty}>No notifications yet.</Text>
+          )
+        }
       />
     </View>
   );

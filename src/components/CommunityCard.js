@@ -1,13 +1,17 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
+import { LoadingIcon } from './LoadingIcons';
 
-export default function CommunityCard({ item, onPress, isMember = false, onJoinRequest = null, onJoin = null }){
+export default function CommunityCard({ item, onPress, isMember = false, onJoinRequest = null, onJoin = null, isJoining = false }){
+  console.log('CommunityCard for', item.name, 'isMember:', isMember, 'members:', item.members);
+  
   const getCommunityType = () => {
     return 'Community';
   };
 
   const getMemberCountText = () => {
     const count = item.memberCount || item.members?.length || 0;
+    console.log(`CommunityCard - ${item.name}: memberCount=${item.memberCount}, members.length=${item.members?.length}, final count=${count}`);
     if (count === 0) return 'No members';
     if (count === 1) return '1 member';
     return `${count} members`;
@@ -50,12 +54,17 @@ export default function CommunityCard({ item, onPress, isMember = false, onJoinR
   };
 
   const handleJoinPress = () => {
+    console.log('Join button pressed for', item.name, 'isMember:', isMember, 'privacy:', item.privacySetting);
     if (item.privacySetting === 'private' && !isMember) {
+      console.log('Calling onJoinRequest');
       if (onJoinRequest) {
         onJoinRequest(item);
       }
     } else if (!isMember && onJoin) {
+      console.log('Calling onJoin');
       onJoin();
+    } else {
+      console.log('No action taken - already member or no handlers');
     }
   };
 
@@ -125,10 +134,18 @@ export default function CommunityCard({ item, onPress, isMember = false, onJoinR
       )}
 
       {!isMember && (
-        <TouchableOpacity style={styles.joinButton} onPress={handleJoinPress}>
-          <Text style={styles.joinButtonText}>
-            {item.privacySetting === 'private' ? '🔒 Request to Join' : '✨ Join Community'}
-          </Text>
+        <TouchableOpacity 
+          style={[styles.joinButton, isJoining && styles.joinButtonDisabled]} 
+          onPress={handleJoinPress}
+          disabled={isJoining}
+        >
+          {isJoining ? (
+            <LoadingIcon type="dots" color="#fff" text="" />
+          ) : (
+            <Text style={styles.joinButtonText}>
+              {item.privacySetting === 'private' ? '🔒 Request to Join' : '✨ Join Community'}
+            </Text>
+          )}
         </TouchableOpacity>
       )}
     </TouchableOpacity>
@@ -311,5 +328,8 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 14,
     fontWeight: '600',
+  },
+  joinButtonDisabled: {
+    backgroundColor: '#7aa0ac',
   },
 });

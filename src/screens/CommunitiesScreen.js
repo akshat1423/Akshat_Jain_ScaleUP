@@ -1,7 +1,9 @@
 import React, { useMemo, useState } from 'react';
-import { View, Text, StyleSheet, FlatList, TextInput, TouchableOpacity, Alert, ActivityIndicator, ScrollView, Modal } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TextInput, TouchableOpacity, Alert, ActivityIndicator, ScrollView, Modal, RefreshControl } from 'react-native';
 import { useStore } from '../state/store';
 import CommunityCard from '../components/CommunityCard';
+import { ShimmerCommunityCard, ShimmerList } from '../components/ShimmerEffect';
+import { LoadingIcon } from '../components/LoadingIcons';
 import { api } from '../services/supabaseApi';
 
 export default function CommunitiesScreen({ navigation }){
@@ -54,17 +56,31 @@ export default function CommunitiesScreen({ navigation }){
   };
 
   const join = async (c)=>{
+    console.log('Attempting to join community:', c.name, 'User:', user.id, 'Members:', c.members);
+    console.log('User ID type:', typeof user.id, 'Member IDs types:', c.members.map(id => typeof id));
+    console.log('Includes check result:', c.members.includes(user.id));
+    
     if (c.members.includes(user.id)) {
       Alert.alert('Already Joined', 'You are already a member of this community');
       return;
     }
     setIsJoining(c.id);
     try {
+      console.log('Calling joinCommunity API...');
       await storeApi.joinCommunity({ userId: user.id, communityId: c.id });
+      console.log('Join successful, refreshing data...');
       await refresh();
       Alert.alert('Success', `Joined ${c.name}!`);
     } catch (error) {
-      Alert.alert('Error', 'Failed to join community');
+      console.error('Error joining community:', error);
+      
+      // Handle duplicate key error specifically
+      if (error.code === '23505') {
+        Alert.alert('Already Joined', 'You are already a member of this community. Refreshing data...');
+        await refresh(); // Refresh to get updated member data
+      } else {
+        Alert.alert('Error', `Failed to join community: ${error.message}`);
+      }
     } finally {
       setIsJoining(null);
     }
@@ -101,8 +117,7 @@ export default function CommunitiesScreen({ navigation }){
   if (authLoading) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#08313B" />
-        <Text style={styles.loadingText}>Authenticating...</Text>
+        <LoadingIcon type="pulse" color="#08313B" text="Authenticating..." />
       </View>
     );
   }
@@ -126,15 +141,35 @@ export default function CommunitiesScreen({ navigation }){
 
   if (loading) {
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#08313B" />
-        <Text style={styles.loadingText}>Loading communities...</Text>
-      </View>
+      <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+        <View style={styles.header}>
+          <Text style={styles.h1}>Communities</Text>
+          <Text style={styles.sub}>Create, join, and manage communities</Text>
+        </View>
+        
+        <View style={styles.sectionContainer}>
+          <Text style={styles.section}>Communities</Text>
+          <ShimmerList 
+            count={3} 
+            itemComponent={<ShimmerCommunityCard />}
+            style={{ marginTop: 12 }}
+          />
+        </View>
+      </ScrollView>
     );
   }
 
   return (
-    <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+    <ScrollView 
+      style={styles.container}
+      refreshControl={
+        <RefreshControl
+          refreshing={loading}
+          onRefresh={refresh}
+          colors={['#08313B']}
+          tintColor="#08313B"
+        />
+      } showsVerticalScrollIndicator={false}>
       <View style={styles.header}>
         <Text style={styles.h1}>Communities</Text>
         <Text style={styles.sub}>Create, join, and manage communities</Text>
@@ -259,6 +294,7 @@ export default function CommunitiesScreen({ navigation }){
                 onJoinRequest={()=>handleJoinRequest(item)}
                 onJoin={()=>join(item)}
                 isMember={item.members.includes(user.id)}
+                isJoining={isJoining === item.id}
               />
             </View>
           ))

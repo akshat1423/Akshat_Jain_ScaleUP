@@ -12,6 +12,7 @@ import {
   ScrollView
 } from 'react-native';
 import { useStore } from '../state/store';
+import { LoadingIcon } from '../components/LoadingIcons';
 
 export default function AuthScreen() {
   const { api, setUser } = useStore();
@@ -120,7 +121,7 @@ export default function AuthScreen() {
             disabled={loading}
           >
             {loading ? (
-              <ActivityIndicator color="#fff" />
+              <LoadingIcon type="dots" color="#fff" text="" />
             ) : (
               <Text style={styles.authButtonText}>
                 {isSignUp ? 'Sign Up' : 'Sign In'}

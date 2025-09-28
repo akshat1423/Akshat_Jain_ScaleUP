@@ -11,16 +11,21 @@ export function StoreProvider({ children }){
   const [loading, setLoading] = useState(true);
   const [authLoading, setAuthLoading] = useState(true);
 
-  const refresh = async ()=>{
+  const refresh = async (retryCount = 0) => {
     if (!user) {
       console.log('No user, skipping refresh');
       setLoading(false);
       return;
     }
     
-    console.log('Starting refresh...');
+    console.log(`Starting refresh (attempt ${retryCount + 1})...`);
     setLoading(true);
     try {
+      // Initialize member counts for existing communities in background (non-blocking)
+      api.initializeMemberCounts().catch(error => {
+        console.error('Background member count initialization failed:', error);
+      });
+      
       console.log('Fetching communities...');
       const list = await api.listCommunities();
       console.log('Communities fetched:', list);
@@ -35,11 +40,21 @@ export function StoreProvider({ children }){
     } catch (error) {
       console.error('Error refreshing data:', error);
       console.error('Error details:', error.message, error.code);
+      
+      // Retry once if it's a timeout or network error
+      if (retryCount < 1 && (error.message.includes('timeout') || error.message.includes('network'))) {
+        console.log('Retrying refresh due to timeout/network error...');
+        setTimeout(() => refresh(retryCount + 1), 2000);
+        return;
+      }
+      
       // Set empty arrays on error to prevent infinite loading
       setCommunities([]);
       setNotifications([]);
-      // Show error to user
-      Alert.alert('Error', `Failed to load data: ${error.message}`);
+      // Show error to user only if not a retry
+      if (retryCount >= 1) {
+        Alert.alert('Error', `Failed to load data: ${error.message}`);
+      }
     } finally {
       setLoading(false);
       console.log('Loading set to false');
