@@ -61,6 +61,12 @@ export default function CommunityDetailScreen({ route, navigation }) {
 
   // Announcements state
   const [announcements, setAnnouncements] = useState([]);
+  const [showCreateAnnouncement, setShowCreateAnnouncement] = useState(false);
+  const [announcementForm, setAnnouncementForm] = useState({
+    title: '',
+    content: '',
+    priority: 'normal',
+  });
 
   // Sub-community creation state
   const [showCreateSubCommunity, setShowCreateSubCommunity] = useState(false);
@@ -82,9 +88,17 @@ export default function CommunityDetailScreen({ route, navigation }) {
       setLoading(true);
       const communityData = await api.getCommunityDetails(communityId);
       setCommunity(communityData);
-      setIsMember(communityData.members.includes(user.id));
+      const memberStatus = communityData.members.includes(user.id);
+      setIsMember(memberStatus);
+      
+      // Set user role - creator is admin, others are members for now
+      if (communityData.createdBy === user.id) {
+        setUserRole('admin');
+      } else {
+        setUserRole('member');
+      }
 
-      if (isMember) {
+      if (memberStatus) {
         // Load additional data only if user is a member
         await Promise.all([
           loadChatMessages(),
@@ -281,6 +295,20 @@ export default function CommunityDetailScreen({ route, navigation }) {
     }
   };
 
+  const voteOnPoll = async (pollId, optionIndex) => {
+    try {
+      await api.votePoll({
+        pollId: pollId,
+        selectedOptions: [optionIndex],
+      });
+      await loadPolls(); // Refresh polls to show updated vote counts
+      Alert.alert('Success', 'Vote recorded!');
+    } catch (error) {
+      console.error('Error voting on poll:', error);
+      Alert.alert('Error', 'Failed to record vote');
+    }
+  };
+
   const createSubCommunity = async () => {
     if (!subCommunityForm.name.trim()) {
       Alert.alert('Error', 'Please enter a sub-community name');
@@ -314,6 +342,32 @@ export default function CommunityDetailScreen({ route, navigation }) {
       Alert.alert('Success', 'Sub-community created successfully!');
     } catch (error) {
       Alert.alert('Error', 'Failed to create sub-community');
+    }
+  };
+
+  const createAnnouncement = async () => {
+    if (!announcementForm.title.trim() || !announcementForm.content.trim()) {
+      Alert.alert('Error', 'Please provide both title and content');
+      return;
+    }
+
+    try {
+      await api.createAnnouncement({
+        communityId: community.id,
+        title: announcementForm.title.trim(),
+        content: announcementForm.content.trim(),
+        priority: announcementForm.priority,
+      });
+      setShowCreateAnnouncement(false);
+      setAnnouncementForm({
+        title: '',
+        content: '',
+        priority: 'normal',
+      });
+      await loadAnnouncements();
+      Alert.alert('Success', 'Announcement created successfully!');
+    } catch (error) {
+      Alert.alert('Error', 'Failed to create announcement');
     }
   };
 
@@ -390,12 +444,33 @@ export default function CommunityDetailScreen({ route, navigation }) {
             
             <TouchableOpacity 
               style={styles.quickActionButton}
+              onPress={() => setActiveTab('announcements')}
+            >
+              <Text style={styles.quickActionIcon}>📢</Text>
+              <Text style={styles.quickActionText}>Announcements</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity 
+              style={styles.quickActionButton}
               onPress={() => setActiveTab('members')}
             >
               <Text style={styles.quickActionIcon}>👥</Text>
               <Text style={styles.quickActionText}>Members</Text>
             </TouchableOpacity>
           </View>
+        </View>
+      )}
+
+      {isMember && (userRole === 'admin' || userRole === 'moderator') && (
+        <View style={styles.adminActionsContainer}>
+          <Text style={styles.sectionTitle}>Admin Actions</Text>
+          <TouchableOpacity 
+            style={styles.adminActionButton}
+            onPress={() => setShowCreateSubCommunity(true)}
+          >
+            <Text style={styles.adminActionIcon}>🏘️</Text>
+            <Text style={styles.adminActionText}>Create Sub-Community</Text>
+          </TouchableOpacity>
         </View>
       )}
 
@@ -618,18 +693,35 @@ export default function CommunityDetailScreen({ route, navigation }) {
               </View>
               
               <View style={styles.pollOptions}>
-                {options.map((option, index) => (
-                  <TouchableOpacity 
-                    key={index} 
-                    style={styles.pollOption}
-                    disabled={isExpired}
-                  >
-                    <Text style={styles.pollOptionText}>{option}</Text>
-                    <Text style={styles.pollOptionVotes}>
-                      {Math.floor(Math.random() * totalVotes)} votes
-                    </Text>
-                  </TouchableOpacity>
-                ))}
+                {options.map((option, index) => {
+                  // Get actual vote count for this option
+                  const optionVotes = poll.community_poll_votes?.filter(vote => 
+                    vote.selected_options?.includes(index)
+                  ).length || 0;
+                  const votePercentage = totalVotes > 0 ? (optionVotes / totalVotes) * 100 : 0;
+
+                  return (
+                    <TouchableOpacity 
+                      key={index} 
+                      style={[styles.pollOption, isExpired && styles.pollOptionDisabled]}
+                      disabled={isExpired}
+                      onPress={() => voteOnPoll(poll.id, index)}
+                    >
+                      <View style={styles.pollOptionContent}>
+                        <Text style={styles.pollOptionText}>{option}</Text>
+                        <Text style={styles.pollOptionVotes}>
+                          {optionVotes} votes ({votePercentage.toFixed(1)}%)
+                        </Text>
+                      </View>
+                      <View 
+                        style={[
+                          styles.pollOptionBar, 
+                          { width: `${votePercentage}%` }
+                        ]} 
+                      />
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
               
               <View style={styles.pollFooter}>
@@ -642,12 +734,6 @@ export default function CommunityDetailScreen({ route, navigation }) {
                   </Text>
                 )}
               </View>
-              
-              {!isExpired && (
-                <TouchableOpacity style={styles.voteButton}>
-                  <Text style={styles.voteButtonText}>Vote Now</Text>
-                </TouchableOpacity>
-              )}
             </View>
           );
         })
@@ -696,6 +782,51 @@ export default function CommunityDetailScreen({ route, navigation }) {
     </View>
   );
 
+  const renderAnnouncements = () => (
+    <View style={styles.tabContent}>
+      {(userRole === 'admin' || userRole === 'moderator') && (
+        <TouchableOpacity
+          style={styles.createButton}
+          onPress={() => setShowCreateAnnouncement(true)}
+        >
+          <Text style={styles.createButtonText}>📢 Create Announcement</Text>
+        </TouchableOpacity>
+      )}
+
+      {announcements.length === 0 ? (
+        <View style={styles.emptyState}>
+          <Text style={styles.emptyStateText}>
+            {userRole === 'admin' || userRole === 'moderator'
+              ? 'No announcements yet. Create the first one!'
+              : 'No announcements yet'}
+          </Text>
+        </View>
+      ) : (
+        announcements.map((announcement) => (
+          <View key={announcement.id} style={styles.announcementItem}>
+            <View style={styles.announcementHeader}>
+              <Text style={styles.announcementTitle}>{announcement.title}</Text>
+              <Text style={styles.announcementDate}>
+                {new Date(announcement.created_at).toLocaleDateString()}
+              </Text>
+            </View>
+            <Text style={styles.announcementContent}>{announcement.content}</Text>
+            <View style={styles.announcementFooter}>
+              <Text style={styles.announcementAuthor}>
+                By {announcement.users?.name || 'Unknown'}
+              </Text>
+              {announcement.priority === 'high' && (
+                <View style={styles.priorityBadge}>
+                  <Text style={styles.priorityText}>🔴 High Priority</Text>
+                </View>
+              )}
+            </View>
+          </View>
+        ))
+      )}
+    </View>
+  );
+
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
@@ -737,6 +868,7 @@ export default function CommunityDetailScreen({ route, navigation }) {
         {isMember && renderTabButton('chat', 'Chat', '💬')}
         {isMember && renderTabButton('events', 'Events', '📅')}
         {isMember && renderTabButton('polls', 'Polls', '📊')}
+        {isMember && renderTabButton('announcements', 'Announcements', '📢')}
         {isMember && renderTabButton('members', 'Members', '👥')}
       </View>
 
@@ -745,6 +877,7 @@ export default function CommunityDetailScreen({ route, navigation }) {
         {activeTab === 'chat' && isMember && renderChat()}
         {activeTab === 'events' && isMember && renderEvents()}
         {activeTab === 'polls' && isMember && renderPolls()}
+        {activeTab === 'announcements' && isMember && renderAnnouncements()}
         {activeTab === 'members' && isMember && renderMembers()}
       </ScrollView>
 
@@ -867,6 +1000,65 @@ export default function CommunityDetailScreen({ route, navigation }) {
             />
             <TouchableOpacity style={styles.submitButton} onPress={createPoll}>
               <Text style={styles.submitButtonText}>Create Poll</Text>
+            </TouchableOpacity>
+          </ScrollView>
+        </View>
+      </Modal>
+
+      {/* Create Announcement Modal */}
+      <Modal visible={showCreateAnnouncement} animationType="slide">
+        <View style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Create Announcement</Text>
+            <TouchableOpacity onPress={() => setShowCreateAnnouncement(false)}>
+              <Text style={styles.closeButton}>✕</Text>
+            </TouchableOpacity>
+          </View>
+          <ScrollView style={styles.modalContent}>
+            <TextInput
+              style={styles.input}
+              placeholder="Announcement Title *"
+              value={announcementForm.title}
+              onChangeText={(text) => setAnnouncementForm({ ...announcementForm, title: text })}
+            />
+            
+            <TextInput 
+              style={[styles.input, styles.textArea]} 
+              placeholder="Announcement Content *" 
+              value={announcementForm.content} 
+              onChangeText={(text) => setAnnouncementForm({ ...announcementForm, content: text })}
+              multiline
+              numberOfLines={5}
+            />
+
+            <Text style={styles.label}>Priority</Text>
+            <View style={styles.prioritySelector}>
+              {[
+                { value: 'low', label: '🟢 Low', color: '#00D1B2' },
+                { value: 'normal', label: '🟡 Normal', color: '#FFB400' },
+                { value: 'high', label: '🔴 High', color: '#FF4757' }
+              ].map((priority) => (
+                <TouchableOpacity
+                  key={priority.value}
+                  style={[
+                    styles.priorityOption,
+                    announcementForm.priority === priority.value && styles.priorityOptionSelected,
+                    { borderColor: priority.color }
+                  ]}
+                  onPress={() => setAnnouncementForm({ ...announcementForm, priority: priority.value })}
+                >
+                  <Text style={[
+                    styles.priorityOptionText,
+                    announcementForm.priority === priority.value && { color: priority.color }
+                  ]}>
+                    {priority.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <TouchableOpacity style={styles.submitButton} onPress={createAnnouncement}>
+              <Text style={styles.submitButtonText}>Create Announcement</Text>
             </TouchableOpacity>
           </ScrollView>
         </View>
@@ -1611,14 +1803,23 @@ const styles = StyleSheet.create({
   },
   pollOption: {
     backgroundColor: '#F8FBFC',
-    padding: 12,
     borderRadius: 8,
     marginBottom: 8,
     borderWidth: 1,
     borderColor: '#E2EDF1',
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  pollOptionDisabled: {
+    opacity: 0.6,
+  },
+  pollOptionContent: {
+    padding: 12,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    zIndex: 2,
+    position: 'relative',
   },
   pollOptionText: {
     fontSize: 14,
@@ -1629,6 +1830,14 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#7aa0ac',
     fontWeight: '600',
+  },
+  pollOptionBar: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    backgroundColor: '#E8F5FF',
+    zIndex: 1,
   },
   pollFooter: {
     flexDirection: 'row',
@@ -1685,5 +1894,112 @@ const styles = StyleSheet.create({
   },
   privacyOptionTextSelected: {
     color: '#fff',
+  },
+  // Announcement Styles
+  announcementItem: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#E2EDF1',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  announcementHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 8,
+  },
+  announcementTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#08313B',
+    flex: 1,
+  },
+  announcementDate: {
+    fontSize: 12,
+    color: '#7aa0ac',
+    marginLeft: 8,
+  },
+  announcementContent: {
+    fontSize: 14,
+    color: '#4B6A75',
+    lineHeight: 20,
+    marginBottom: 12,
+  },
+  announcementFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  announcementAuthor: {
+    fontSize: 12,
+    color: '#7aa0ac',
+    fontStyle: 'italic',
+  },
+  priorityBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    backgroundColor: '#FFE8E8',
+  },
+  priorityText: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#8B0000',
+  },
+  prioritySelector: {
+    flexDirection: 'row',
+    marginBottom: 16,
+    gap: 8,
+  },
+  priorityOption: {
+    flex: 1,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    borderWidth: 2,
+    backgroundColor: '#fff',
+    alignItems: 'center',
+  },
+  priorityOptionSelected: {
+    backgroundColor: '#F8FBFC',
+  },
+  priorityOptionText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#4B6A75',
+  },
+  textArea: {
+    height: 120,
+    textAlignVertical: 'top',
+  },
+  // Admin Actions Styles
+  adminActionsContainer: {
+    marginBottom: 20,
+  },
+  adminActionButton: {
+    backgroundColor: '#FF6B6B',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    marginTop: 8,
+  },
+  adminActionIcon: {
+    fontSize: 16,
+    marginRight: 8,
+  },
+  adminActionText: {
+    color: '#fff',
+    fontWeight: '600',
+    fontSize: 14,
   },
 });

@@ -872,6 +872,7 @@ class SupabaseApi {
       id: data.id,
       name: data.name,
       parentId: data.parent_id,
+      createdBy: data.created_by,
       description: data.description,
       logoUrl: data.logo_url,
       privacySetting: data.privacy_setting || 'public',
