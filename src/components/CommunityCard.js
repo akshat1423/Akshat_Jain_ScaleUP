@@ -1,43 +1,85 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
 
-export default function CommunityCard({ item, onPress, isMember = false }){
+export default function CommunityCard({ item, onPress, isMember = false, onJoinRequest = null }){
   const getCommunityType = () => {
-    if (item.parentId) {
-      return 'Sub-community';
-    }
-    return 'Parent community';
+    return 'Community';
   };
 
   const getMemberCountText = () => {
-    const count = item.members.length;
+    const count = item.memberCount || item.members?.length || 0;
     if (count === 0) return 'No members';
     if (count === 1) return '1 member';
     return `${count} members`;
   };
 
   const getPostCountText = () => {
-    const count = item.posts.length;
+    const count = item.posts?.length || 0;
     if (count === 0) return 'No posts';
     if (count === 1) return '1 post';
     return `${count} posts`;
   };
 
+  const getPrivacyIcon = () => {
+    switch (item.privacySetting) {
+      case 'private':
+        return '🔒';
+      case 'restricted':
+        return '🛡️';
+      default:
+        return '🌐';
+    }
+  };
+
+  const getPrivacyText = () => {
+    switch (item.privacySetting) {
+      case 'private':
+        return 'Private';
+      case 'restricted':
+        return 'Restricted';
+      default:
+        return 'Public';
+    }
+  };
+
+  const handleJoinPress = () => {
+    if (item.privacySetting === 'private' && !isMember) {
+      if (onJoinRequest) {
+        onJoinRequest(item);
+      }
+    } else {
+      onPress();
+    }
+  };
+
   return (
-    <TouchableOpacity style={[styles.card, isMember && styles.cardJoined]} onPress={onPress}>
+    <TouchableOpacity style={[styles.card, isMember && styles.cardJoined]} onPress={handleJoinPress}>
       <View style={styles.header}>
         <View style={styles.titleContainer}>
-          <Text style={styles.name}>{item.name}</Text>
+          {item.logoUrl && (
+            <Image source={{ uri: item.logoUrl }} style={styles.logo} />
+          )}
+          <View style={styles.titleTextContainer}>
+            <Text style={styles.name}>{item.name}</Text>
+            {item.description && (
+              <Text style={styles.description} numberOfLines={2}>
+                {item.description}
+              </Text>
+            )}
+          </View>
           {isMember && (
             <View style={styles.memberBadge}>
               <Text style={styles.memberBadgeText}>Joined</Text>
             </View>
           )}
         </View>
-        <View style={[styles.typeBadge, item.parentId ? styles.subCommunityBadge : styles.parentCommunityBadge]}>
-          <Text style={[styles.typeText, item.parentId ? styles.subCommunityText : styles.parentCommunityText]}>
-            {getCommunityType()}
-          </Text>
+        <View style={styles.badgeContainer}>
+          <View style={[styles.privacyBadge, styles[`${item.privacySetting}Badge`]]}>
+            <Text style={styles.privacyIcon}>{getPrivacyIcon()}</Text>
+            <Text style={[styles.privacyText, styles[`${item.privacySetting}Text`]]}>
+              {getPrivacyText()}
+            </Text>
+          </View>
         </View>
       </View>
       
@@ -50,7 +92,26 @@ export default function CommunityCard({ item, onPress, isMember = false }){
           <Text style={styles.statIcon}>📝</Text>
           <Text style={styles.statText}>{getPostCountText()}</Text>
         </View>
+        {item.tags && item.tags.length > 0 && (
+          <View style={styles.statItem}>
+            <Text style={styles.statIcon}>🏷️</Text>
+            <Text style={styles.statText}>{item.tags.length} tags</Text>
+          </View>
+        )}
       </View>
+
+      {item.tags && item.tags.length > 0 && (
+        <View style={styles.tagsContainer}>
+          {item.tags.slice(0, 3).map((tag, index) => (
+            <View key={index} style={styles.tag}>
+              <Text style={styles.tagText}>#{tag}</Text>
+            </View>
+          ))}
+          {item.tags.length > 3 && (
+            <Text style={styles.moreTagsText}>+{item.tags.length - 3} more</Text>
+          )}
+        </View>
+      )}
     </TouchableOpacity>
   );
 }
@@ -81,14 +142,29 @@ const styles = StyleSheet.create({
   titleContainer: {
     flex: 1,
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     flexWrap: 'wrap',
+  },
+  logo: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    marginRight: 12,
+    backgroundColor: '#F8FBFC',
+  },
+  titleTextContainer: {
+    flex: 1,
   },
   name: { 
     fontSize: 18, 
     fontWeight: '700', 
     color: '#08313B',
-    flex: 1,
+    marginBottom: 4,
+  },
+  description: {
+    fontSize: 14,
+    color: '#4B6A75',
+    lineHeight: 18,
   },
   memberBadge: {
     backgroundColor: '#00D1B2',
@@ -96,11 +172,16 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     borderRadius: 12,
     marginLeft: 8,
+    alignSelf: 'flex-start',
   },
   memberBadgeText: {
     color: '#042a2a',
     fontSize: 12,
     fontWeight: '600',
+  },
+  badgeContainer: {
+    alignItems: 'flex-end',
+    gap: 6,
   },
   typeBadge: {
     paddingHorizontal: 10,
@@ -123,9 +204,43 @@ const styles = StyleSheet.create({
   subCommunityText: {
     color: '#4B6A75',
   },
+  privacyBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 10,
+    gap: 4,
+  },
+  publicBadge: {
+    backgroundColor: '#E8F5E8',
+  },
+  privateBadge: {
+    backgroundColor: '#FFE8E8',
+  },
+  restrictedBadge: {
+    backgroundColor: '#FFF4E6',
+  },
+  privacyIcon: {
+    fontSize: 12,
+  },
+  privacyText: {
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  publicText: {
+    color: '#2D5A2D',
+  },
+  privateText: {
+    color: '#8B0000',
+  },
+  restrictedText: {
+    color: '#B8860B',
+  },
   stats: {
     flexDirection: 'row',
     gap: 16,
+    marginBottom: 8,
   },
   statItem: {
     flexDirection: 'row',
@@ -139,5 +254,30 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#4B6A75',
     fontWeight: '500',
+  },
+  tagsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginTop: 8,
+  },
+  tag: {
+    backgroundColor: '#F0F8FF',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E2EDF1',
+  },
+  tagText: {
+    fontSize: 12,
+    color: '#4B6A75',
+    fontWeight: '500',
+  },
+  moreTagsText: {
+    fontSize: 12,
+    color: '#7aa0ac',
+    fontStyle: 'italic',
+    alignSelf: 'center',
   },
 });

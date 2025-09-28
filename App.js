@@ -8,6 +8,7 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { StoreProvider, useStore } from './src/state/store';
 import { StatusBar } from 'expo-status-bar';
 import CommunitiesScreen from './src/screens/CommunitiesScreen';
+import CommunityDetailScreen from './src/screens/CommunityDetailScreen';
 import NotificationsScreen from './src/screens/NotificationsScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
 import AuthScreen from './src/screens/AuthScreen';

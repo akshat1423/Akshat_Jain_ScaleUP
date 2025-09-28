@@ -1,17 +1,24 @@
 import React, { useMemo, useState } from 'react';
-import { View, Text, StyleSheet, FlatList, TextInput, TouchableOpacity, Alert, ActivityIndicator, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TextInput, TouchableOpacity, Alert, ActivityIndicator, ScrollView, Modal } from 'react-native';
 import { useStore } from '../state/store';
 import CommunityCard from '../components/CommunityCard';
+import { api } from '../services/supabaseApi';
 
-export default function CommunitiesScreen(){
-  const { communities, api, refresh, user, loading } = useStore();
-  const parents = useMemo(()=> communities.filter(c => !c.parentId), [communities]);
-  const children = useMemo(()=> communities.filter(c => c.parentId), [communities]);
+export default function CommunitiesScreen({ navigation }){
+  const { communities, api: storeApi, refresh, user, loading, authLoading } = useStore();
+  // Show all communities as a flat list, no parent/child distinction
+  
+  console.log('CommunitiesScreen - loading:', loading, 'authLoading:', authLoading, 'user:', user, 'communities:', communities);
   const [name, setName] = useState('');
-  const [parentId, setParentId] = useState('');
+  const [description, setDescription] = useState('');
+  const [privacySetting, setPrivacySetting] = useState('public');
+  const [rules, setRules] = useState('');
+  const [tags, setTags] = useState('');
+  const [maxMembers, setMaxMembers] = useState('');
   const [isCreating, setIsCreating] = useState(false);
   const [isJoining, setIsJoining] = useState(null);
   const [showCreateForm, setShowCreateForm] = useState(false);
+  const [showAdvancedForm, setShowAdvancedForm] = useState(false);
 
   const create = async ()=>{
     if(!name.trim()) {
@@ -20,10 +27,23 @@ export default function CommunitiesScreen(){
     }
     setIsCreating(true);
     try {
-      await api.createCommunity({ name: name.trim(), parentId: parentId || null });
+      const tagsArray = tags.trim() ? tags.split(',').map(tag => tag.trim()).filter(tag => tag) : [];
+      await storeApi.createCommunityComplete({ 
+        name: name.trim(), 
+        parentId: null, // Always create top-level communities
+        description: description.trim(),
+        privacySetting,
+        rules: rules.trim(),
+        tags: tagsArray,
+        maxMembers: maxMembers ? parseInt(maxMembers) : null
+      });
       setName(''); 
-      setParentId('');
+      setDescription('');
+      setRules('');
+      setTags('');
+      setMaxMembers('');
       setShowCreateForm(false);
+      setShowAdvancedForm(false);
       await refresh();
       Alert.alert('Success', 'Community created successfully!');
     } catch (error) {
@@ -40,7 +60,7 @@ export default function CommunitiesScreen(){
     }
     setIsJoining(c.id);
     try {
-      await api.joinCommunity({ userId: user.id, communityId: c.id });
+      await storeApi.joinCommunity({ userId: user.id, communityId: c.id });
       await refresh();
       Alert.alert('Success', `Joined ${c.name}!`);
     } catch (error) {
@@ -50,44 +70,74 @@ export default function CommunitiesScreen(){
     }
   };
 
-  const autoJoin = async (c)=>{
-    const childCommunities = children.filter(child => child.parentId === c.id);
-    if (childCommunities.length === 0) {
-      Alert.alert('No Sub-communities', 'This parent community has no sub-communities to auto-join');
-      return;
-    }
-    
+  const handleJoinRequest = async (c) => {
+    Alert.prompt(
+      'Request to Join',
+      `This is a ${c.privacySetting} community. Send a message to the admins:`,
+      async (message) => {
+        try {
+          await api.requestToJoinCommunity({
+            communityId: c.id,
+            message: message || '',
+          });
+          Alert.alert('Success', 'Join request sent!');
+        } catch (error) {
+          Alert.alert('Error', 'Failed to send join request');
+        }
+      }
+    );
+  };
+
+  const openCommunity = (c) => {
+    // For now, we'll use a simple alert. In a real app, you'd navigate to the detail screen
     Alert.alert(
-      'Auto-Join Sub-communities', 
-      `This will join you to all sub-communities of ${c.name}. Continue?`,
+      'Community Details',
+      `Would you like to view details for ${c.name}?`,
       [
         { text: 'Cancel', style: 'cancel' },
         { 
-          text: 'Join All', 
-          onPress: async () => {
-            setIsJoining(c.id);
-            try {
-              await api.autoJoinChild({ userId: user.id, parentId: c.id });
-              await refresh();
-              Alert.alert('Success', `Auto-joined sub-communities of ${c.name}!`);
-            } catch (error) {
-              Alert.alert('Error', 'Failed to auto-join sub-communities');
-            } finally {
-              setIsJoining(null);
-            }
+          text: 'View Details', 
+          onPress: () => {
+            // TODO: Navigate to CommunityDetailScreen
+            // For now, just show community info
+            Alert.alert(
+              'Community Info',
+              `Name: ${c.name}\nDescription: ${c.description || 'No description'}\nMembers: ${c.memberCount || c.members?.length || 0}\nPrivacy: ${c.privacySetting || 'public'}`,
+              [{ text: 'OK' }]
+            );
           }
         }
       ]
     );
   };
 
-  const openCommunity = (c)=>{
-    Alert.prompt('New Post in '+c.name, 'Type something to post', async (text)=>{
-      if(!text) return;
-      await api.createPost({ communityId: c.id, userId: user.id, text });
-      refresh();
-    });
-  };
+  // Remove auto-join functionality since we're not showing parent/child relationships
+
+  if (authLoading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#08313B" />
+        <Text style={styles.loadingText}>Authenticating...</Text>
+      </View>
+    );
+  }
+
+  if (!user) {
+    return (
+      <View style={styles.loadingContainer}>
+        <Text style={styles.errorText}>Please log in to view communities</Text>
+        <TouchableOpacity 
+          style={styles.retryButton}
+          onPress={() => {
+            // Try to refresh user
+            console.log('Retrying authentication...');
+          }}
+        >
+          <Text style={styles.retryButtonText}>Retry</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
 
   if (loading) {
     return (
@@ -125,34 +175,74 @@ export default function CommunitiesScreen(){
             autoCapitalize="words"
           />
           
-          <Text style={styles.label}>Parent Community (Optional)</Text>
-          <View style={styles.parentSelector}>
-            <Text style={styles.parentText}>
-              {parentId ? 
-                parents.find(p => p.id === parentId)?.name || 'Invalid parent' : 
-                'Select a parent community (leave empty for top-level)'
-              }
-            </Text>
-            <TouchableOpacity 
-              style={styles.selectorButton}
-              onPress={() => {
-                Alert.alert(
-                  'Select Parent Community',
-                  'Choose a parent community or create a top-level community',
-                  [
-                    { text: 'Top-level (No Parent)', onPress: () => setParentId('') },
-                    ...parents.map(p => ({ 
-                      text: p.name, 
-                      onPress: () => setParentId(p.id) 
-                    })),
-                    { text: 'Cancel', style: 'cancel' }
-                  ]
-                );
-              }}
-            >
-              <Text style={styles.selectorButtonText}>Select</Text>
-            </TouchableOpacity>
+          <TextInput 
+            style={styles.input} 
+            placeholder="Description (optional)" 
+            value={description} 
+            onChangeText={setDescription}
+            multiline
+            numberOfLines={3}
+          />
+
+          <Text style={styles.label}>Privacy Setting</Text>
+          <View style={styles.privacySelector}>
+            {['public', 'private', 'restricted'].map((setting) => (
+              <TouchableOpacity
+                key={setting}
+                style={[
+                  styles.privacyOption,
+                  privacySetting === setting && styles.privacyOptionSelected
+                ]}
+                onPress={() => setPrivacySetting(setting)}
+              >
+                <Text style={[
+                  styles.privacyOptionText,
+                  privacySetting === setting && styles.privacyOptionTextSelected
+                ]}>
+                  {setting === 'public' ? '🌐 Public' : 
+                   setting === 'private' ? '🔒 Private' : '🛡️ Restricted'}
+                </Text>
+              </TouchableOpacity>
+            ))}
           </View>
+          
+
+          <TouchableOpacity 
+            style={styles.advancedButton}
+            onPress={() => setShowAdvancedForm(!showAdvancedForm)}
+          >
+            <Text style={styles.advancedButtonText}>
+              {showAdvancedForm ? 'Hide Advanced Options' : 'Show Advanced Options'}
+            </Text>
+          </TouchableOpacity>
+
+          {showAdvancedForm && (
+            <View style={styles.advancedForm}>
+              <TextInput 
+                style={styles.input} 
+                placeholder="Community Rules (optional)" 
+                value={rules} 
+                onChangeText={setRules}
+                multiline
+                numberOfLines={3}
+              />
+              
+              <TextInput 
+                style={styles.input} 
+                placeholder="Tags (comma-separated, e.g., tech, programming)" 
+                value={tags} 
+                onChangeText={setTags}
+              />
+
+              <TextInput 
+                style={styles.input} 
+                placeholder="Max Members (optional)" 
+                value={maxMembers} 
+                onChangeText={setMaxMembers}
+                keyboardType="numeric"
+              />
+            </View>
+          )}
 
           <TouchableOpacity 
             style={[styles.btn, isCreating && styles.btnDisabled]} 
@@ -169,18 +259,19 @@ export default function CommunitiesScreen(){
       )}
 
       <View style={styles.sectionContainer}>
-        <Text style={styles.section}>Parent Communities ({parents.length})</Text>
-        {parents.length === 0 ? (
+        <Text style={styles.section}>Communities ({communities.length})</Text>
+        {communities.length === 0 ? (
           <View style={styles.emptyState}>
-            <Text style={styles.emptyText}>No parent communities yet</Text>
+            <Text style={styles.emptyText}>No communities yet</Text>
             <Text style={styles.emptySubtext}>Create one to get started!</Text>
           </View>
         ) : (
-          parents.map(item => (
+          communities.map(item => (
             <View key={item.id} style={styles.communityItem}>
               <CommunityCard 
                 item={item} 
                 onPress={()=>openCommunity(item)}
+                onJoinRequest={()=>handleJoinRequest(item)}
                 isMember={item.members.includes(user.id)}
               />
               <View style={styles.actionRow}>
@@ -196,55 +287,8 @@ export default function CommunitiesScreen(){
                     <ActivityIndicator size="small" color="#fff" />
                   ) : (
                     <Text style={styles.actionBtnText}>
-                      {item.members.includes(user.id) ? 'Joined' : 'Join'}
-                    </Text>
-                  )}
-                </TouchableOpacity>
-                
-                <TouchableOpacity 
-                  style={[styles.actionBtn, styles.autoJoinBtn]} 
-                  onPress={()=>autoJoin(item)}
-                  disabled={isJoining === item.id}
-                >
-                  <Text style={[styles.actionBtnText, styles.autoJoinText]}>
-                    Auto-Join Sub-communities
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          ))
-        )}
-      </View>
-
-      <View style={styles.sectionContainer}>
-        <Text style={styles.section}>Sub-communities ({children.length})</Text>
-        {children.length === 0 ? (
-          <View style={styles.emptyState}>
-            <Text style={styles.emptyText}>No sub-communities yet</Text>
-            <Text style={styles.emptySubtext}>Create some under parent communities!</Text>
-          </View>
-        ) : (
-          children.map(item => (
-            <View key={item.id} style={styles.communityItem}>
-              <CommunityCard 
-                item={item} 
-                onPress={()=>openCommunity(item)}
-                isMember={item.members.includes(user.id)}
-              />
-              <View style={styles.actionRow}>
-                <TouchableOpacity 
-                  style={[
-                    styles.actionBtn, 
-                    item.members.includes(user.id) && styles.actionBtnJoined
-                  ]} 
-                  onPress={()=>join(item)}
-                  disabled={isJoining === item.id}
-                >
-                  {isJoining === item.id ? (
-                    <ActivityIndicator size="small" color="#fff" />
-                  ) : (
-                    <Text style={styles.actionBtnText}>
-                      {item.members.includes(user.id) ? 'Joined' : 'Join'}
+                      {item.members.includes(user.id) ? 'Joined' : 
+                       item.privacySetting === 'private' ? 'Request to Join' : 'Join'}
                     </Text>
                   )}
                 </TouchableOpacity>
@@ -433,5 +477,72 @@ const styles = StyleSheet.create({
   },
   autoJoinText: {
     color: '#042a2a',
+  },
+  privacySelector: {
+    flexDirection: 'row',
+    marginBottom: 16,
+    gap: 8,
+  },
+  privacyOption: {
+    flex: 1,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#CCE1E8',
+    backgroundColor: '#fff',
+    alignItems: 'center',
+  },
+  privacyOptionSelected: {
+    backgroundColor: '#08313B',
+    borderColor: '#08313B',
+  },
+  privacyOptionText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#4B6A75',
+  },
+  privacyOptionTextSelected: {
+    color: '#fff',
+  },
+  advancedButton: {
+    backgroundColor: '#F8FBFC',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#CCE1E8',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  advancedButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#08313B',
+  },
+  advancedForm: {
+    backgroundColor: '#F8FBFC',
+    padding: 16,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#CCE1E8',
+    marginBottom: 16,
+  },
+  errorText: {
+    fontSize: 18,
+    color: '#FF6B6B',
+    textAlign: 'center',
+    marginBottom: 16,
+  },
+  retryButton: {
+    backgroundColor: '#08313B',
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 8,
+  },
+  retryButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
   },
 });
