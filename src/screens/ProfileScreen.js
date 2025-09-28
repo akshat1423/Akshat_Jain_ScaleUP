@@ -18,8 +18,21 @@ export default function ProfileScreen(){
     courses: user.courses?.join(', ') || ''
   });
 
-  // Privacy settings state
-  const [privacySettings, setPrivacySettings] = useState(user.privacySettings || {});
+  // Privacy settings state with proper defaults
+  const defaultPrivacySettings = {
+    profileVisibility: 'public',
+    showMajor: true,
+    showYear: true,
+    showInterests: true,
+    showClubs: true,
+    showCourses: false,
+    showBio: true,
+    showImpactPoints: true
+  };
+  const [privacySettings, setPrivacySettings] = useState({
+    ...defaultPrivacySettings,
+    ...user.privacySettings
+  });
 
   const myPosts = communities.flatMap(c => c.posts.filter(p => p.userId === user.id).map(p => ({...p, community:c.name})));
 
